@@ -1,0 +1,33 @@
+{
+  "project": {
+    "name": "New Marketing Campaign",
+    "notes": "Q4 launch plan",
+    "privacy": "private"
+  },
+  "sections": [
+    { "name": "Backlog" },
+    { "name": "In Progress" },
+    { "name": "Done" }
+  ],
+  "tasks": [
+    {
+      "name": "Kickoff Meeting",
+      "notes": "Agenda attached",
+      "assignee": "12001234567890",
+      "due_on": "2025-09-01",
+      "followers": ["1200123", "1200456"],
+      "tags": ["1200789"],
+      "custom_fields": { "123456": "High" },
+      "section_name": "Backlog",
+      "subtasks": [
+        { "name": "Book room" },
+        { "name": "Invite stakeholders" }
+      ]
+    },
+    {
+      "name": "Design Assets",
+      "notes": "Hero image + variants",
+      "section_name": "In Progress"
+    }
+  ]
+}

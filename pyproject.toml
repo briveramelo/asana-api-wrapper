@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asana-json-provisioner"
+version = "0.1.0"
+description = "Provision Asana projects and tasks from JSON"
+authors = [{ name = "Your Name" }]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "asana>=3.2.1",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+provision = "asana_json_provisioner.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
