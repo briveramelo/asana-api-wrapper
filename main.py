@@ -5,6 +5,7 @@ import typer
 from src.config import get_settings
 from src.wrapper import create_project_from_json, create_tasks_in_project
 from src.asana_mapping_generator import generate_asana_mapping
+from src.openapi_exporter import export_openapi_yaml
 
 app = typer.Typer(add_completion=False, help="Provision Asana objects from JSON")
 
@@ -48,6 +49,14 @@ def generate_mapping(
     with out.open("w", encoding="utf-8") as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False, sort_keys=True)
     typer.echo(f"Wrote mapping to {out}")
+
+
+@app.command("export-openapi")
+def export_openapi(
+    out: Path = typer.Option("llm_tools_openapi.yml", help="Output OpenAPI YAML file."),
+):
+    export_openapi_yaml(out)
+    typer.echo(f"Wrote OpenAPI schema to {out}")
 
 
 if __name__ == "__main__":

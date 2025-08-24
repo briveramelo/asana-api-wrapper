@@ -1,22 +1,42 @@
 """FastAPI endpoints exposing Asana helper utilities for LLM use."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Body
+from pydantic import BaseModel
 
 from .wrapper import create_project_from_json, create_tasks_in_project
 from .asana_mapping_generator import generate_asana_mapping
+from .models import ProjectSpec, TaskSpec
 
 router = APIRouter()
 
 
+class ProjectCreationResult(BaseModel):
+    project: dict[str, Any]
+    sections: list[dict[str, Any]]
+    tasks: list[dict[str, Any]]
+
+
+class TasksCreationResult(BaseModel):
+    tasks: list[dict[str, Any]]
+
+
+class MappingModel(BaseModel):
+    projects: dict[str, str]
+    sections: dict[str, dict[str, str]]
+    custom_fields: dict[str, dict[str, Any]]
+    tags: dict[str, str]
+    users: dict[str, str]
+
+
 @router.post("/project")
-def create_project(spec: dict[str, any] = Body(...)) -> dict[str, any]:
+def create_project(spec: ProjectSpec = Body(...)) -> ProjectCreationResult:
     """Create an Asana project from a JSON specification.
 
     Parameters
     ----------
-    spec : dict
+    spec : ProjectSpec
         JSON object describing the project to create. Schema::
 
             {
@@ -25,24 +45,25 @@ def create_project(spec: dict[str, any] = Body(...)) -> dict[str, any]:
               "tasks": [TaskSpec, ...]
             }
 
-        TaskSpec is a dict with keys such as "name", "notes", "assignee",
-        "due_on", "section"/"section_name", and optional "subtasks" which is a
-        list of TaskSpec.
+        ``TaskSpec`` includes keys like "name", "notes", "assignee", "due_on",
+        "section"/"section_name", and optional ``subtasks`` which is a list of
+        ``TaskSpec``.
 
     Returns
     -------
-    dict
+    ProjectCreationResult
         ``{"project": {...}, "sections": [...], "tasks": [...]}``
     """
 
-    return create_project_from_json(spec)
+    result = create_project_from_json(spec)
+    return ProjectCreationResult(**result)
 
 
 @router.post("/project/{project_gid}/tasks")
 def create_tasks(
     project_gid: str,
-    tasks: list[dict[str, any]] = Body(...),
-) -> list[dict[str, any]]:
+    tasks: list[TaskSpec] = Body(...),
+) -> TasksCreationResult:
     """Add tasks to an existing project.
 
     Parameters
@@ -64,18 +85,19 @@ def create_tasks(
 
     Returns
     -------
-    list[dict]
-        list of task objects returned by the Asana API.
+    TasksCreationResult
+        Wrapper around the list of task objects returned by the Asana API.
     """
 
-    return create_tasks_in_project(project_gid, tasks)
+    created = create_tasks_in_project(project_gid, tasks)
+    return TasksCreationResult(tasks=created)
 
 
 @router.post("/mapping")
 def generate_mapping(
     workspace_gid: Optional[str] = None,
     projects: Optional[list[str]] = None,
-) -> dict[str, any]:
+) -> MappingModel:
     """Generate a lightweight mapping of Asana identifiers.
 
     Parameters
@@ -88,7 +110,7 @@ def generate_mapping(
 
     Returns
     -------
-    dict
+    MappingModel
         Mapping with schema::
 
             {
@@ -105,7 +127,8 @@ def generate_mapping(
             }
     """
 
-    return generate_asana_mapping(
+    mapping = generate_asana_mapping(
         workspace_gid=workspace_gid,
         projects=projects,
     )
+    return MappingModel(**mapping)
