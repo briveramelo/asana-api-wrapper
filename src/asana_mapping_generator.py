@@ -114,7 +114,7 @@ def generate_asana_mapping(
     projects_by_name = _index_by_name_thin(all_projects)
 
     # Decide which projects to include
-    if projects:
+    if projects and len(projects) > 1 and projects[0]:
         missing = [p for p in projects if p not in projects_by_name]
         if missing:
             logger.warning("These project names were not found in workspace %s: %s", workspace_gid, missing)
