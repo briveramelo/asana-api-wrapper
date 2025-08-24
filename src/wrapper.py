@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 from typing import Dict, List, Any, Optional
-from .client import get_client, with_backoff
+from .asana_client import get_client, with_backoff
 from .config import get_settings
 from .models import ProjectSpec, TaskSpec
 

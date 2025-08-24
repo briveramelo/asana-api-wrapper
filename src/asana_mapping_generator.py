@@ -3,18 +3,18 @@
 Generate a hard-coded Asana "Rosetta Stone" mapping for LLM use.
 
 Example:
-    python generate_asana_mapping.py \
+    python main.py generate-mapping \
         --workspace-gid 1200... \
         --project "Asana API Test" \
         --out asana_mapping.json
 """
 
 from __future__ import annotations
-import argparse
 import json
 import logging
+from typing import Any
 
-from client import get_client 
+from client import get_client
 from config import get_settings
 
 logger = logging.getLogger("asana-mapper")
@@ -43,7 +43,7 @@ def _collect_sections(client, project_gid: str) -> dict[str, str]:
     sections = client.sections.list_for_project(project_gid)
     return _index_by_name_thin(sections)
 
-def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, any]:
+def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, Any]:
     """
     Returns:
     {
@@ -59,7 +59,7 @@ def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, an
     opt = "custom_field.name,custom_field.resource_subtype,custom_field.enum_options.name,custom_field.enum_options.gid"
     settings = client.custom_field_settings.list_for_project(project_gid, opt_fields=opt)
 
-    by_name: dict[str, any] = {}
+    by_name: dict[str, Any] = {}
     for s in settings:
         cf = s.get("custom_field") or {}
         name = (cf.get("name") or "").strip()
@@ -97,17 +97,15 @@ def _collect_tags(client, workspace_gid: str) -> dict[str, str]:
     tags = client.tags.list_for_workspace(workspace_gid)
     return _index_by_name_thin(tags)
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Generate a static Asana mapping file for LLMs.")
-    ap.add_argument("--workspace-gid", help="Workspace GID. If omitted, uses settings.default_workspace_gid.")
-    ap.add_argument("--project", action="append", dest="projects", help="Project name to include (repeatable). If omitted, includes ALL projects in the workspace.")
-    ap.add_argument("--out", default="asana_mapping.json", help="Output JSON file path.")
-    args = ap.parse_args()
-
+def generate_asana_mapping(
+    workspace_gid: str | None = None,
+    projects: list[str] | None = None,
+    out: str = "asana_mapping.json",
+) -> None:
     client = get_client()
     settings = get_settings()
 
-    workspace_gid = args.workspace_gid or getattr(settings, "default_workspace_gid", None)
+    workspace_gid = workspace_gid or getattr(settings, "default_workspace_gid", None)
     if not workspace_gid:
         raise SystemExit("You must pass --workspace-gid or set settings.default_workspace_gid")
 
@@ -116,16 +114,16 @@ def main() -> None:
     projects_by_name = _index_by_name_thin(all_projects)
 
     # Decide which projects to include
-    if args.projects:
-        missing = [p for p in args.projects if p not in projects_by_name]
+    if projects:
+        missing = [p for p in projects if p not in projects_by_name]
         if missing:
             logger.warning("These project names were not found in workspace %s: %s", workspace_gid, missing)
-        chosen = {p: projects_by_name[p] for p in args.projects if p in projects_by_name}
+        chosen = {p: projects_by_name[p] for p in projects if p in projects_by_name}
     else:
         chosen = projects_by_name
 
     # Build the mapping
-    mapping: dict[str, any] = {
+    mapping: dict[str, Any] = {
         "projects": chosen,               # {project_name: gid}
         "sections": {},                   # {project_name: {section_name: gid}}
         "custom_fields": {},              # {project_name: {field_name: {...}}}
@@ -138,11 +136,8 @@ def main() -> None:
         mapping["custom_fields"][proj_name] = _collect_custom_fields_for_project(client, proj_gid)
 
     # Persist to disk
-    with open(args.out, "w", encoding="utf-8") as f:
+    with open(out, "w", encoding="utf-8") as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False, sort_keys=True)
 
     logger.info("Wrote %s with projects=%d, users=%d, tags=%d",
-                args.out, len(chosen), len(mapping["users"]), len(mapping["tags"]))
-
-if __name__ == "__main__":
-    main()
+                out, len(chosen), len(mapping["users"]), len(mapping["tags"]))

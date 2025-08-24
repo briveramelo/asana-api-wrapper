@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import typer
 from src.wrapper import create_project_from_json, create_tasks_in_project
+from src.asana_mapping_generator import generate_asana_mapping
 
 app = typer.Typer(add_completion=False, help="Provision Asana objects from JSON")
 
@@ -32,6 +33,17 @@ def add_tasks(
     tasks_spec = _load_json(file)
     created = create_tasks_in_project(project_gid=project, tasks_spec=tasks_spec)
     typer.echo(f"Created {len(created)} tasks in project {project}")
+
+
+@app.command("generate-mapping")
+def generate_mapping(
+    workspace_gid: str | None = typer.Option(None, "--workspace-gid", help="Workspace GID. If omitted, uses settings.default_workspace_gid."),
+    project: list[str] | None = typer.Option(None, "--project", "-P", help="Project name to include (repeatable). If omitted, includes ALL projects in the workspace."),
+    out: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
+):
+    # Delegate to the generator function
+    generate_asana_mapping(workspace_gid=workspace_gid, projects=project, out=str(out))
+    typer.echo(f"Wrote mapping to {out}")
 
 
 if __name__ == "__main__":
