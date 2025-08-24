@@ -1,4 +1,3 @@
-from __future__ import annotations
 import json
 from pathlib import Path
 import typer
@@ -42,7 +41,12 @@ def generate_mapping(
     out: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
 ):
     settings = get_settings()
-    generate_asana_mapping(workspace_gid=settings.workspace_gid, projects=[settings.project_gid], out=str(out))
+    mapping = generate_asana_mapping(
+        workspace_gid=settings.workspace_gid,
+        projects=[settings.project_gid]
+    )
+    with out.open("w", encoding="utf-8") as f:
+        json.dump(mapping, f, indent=2, ensure_ascii=False, sort_keys=True)
     typer.echo(f"Wrote mapping to {out}")
 
 

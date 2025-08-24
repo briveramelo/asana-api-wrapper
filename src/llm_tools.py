@@ -1,27 +1,17 @@
 """FastAPI endpoints exposing Asana helper utilities for LLM use."""
 
-from __future__ import annotations
-
-import json
-import os
-import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Body
 
-from .wrapper import (
-    create_project_from_json as _create_project_from_json,
-    create_tasks_in_project as _create_tasks_in_project,
-)
-from .asana_mapping_generator import (
-    generate_asana_mapping as _generate_asana_mapping,
-)
+from .wrapper import create_project_from_json, create_tasks_in_project
+from .asana_mapping_generator import generate_asana_mapping
 
 router = APIRouter()
 
 
 @router.post("/project")
-def create_project(spec: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+def create_project(spec: dict[str, any] = Body(...)) -> dict[str, any]:
     """Create an Asana project from a JSON specification.
 
     Parameters
@@ -45,14 +35,14 @@ def create_project(spec: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         ``{"project": {...}, "sections": [...], "tasks": [...]}``
     """
 
-    return _create_project_from_json(spec)
+    return create_project_from_json(spec)
 
 
 @router.post("/project/{project_gid}/tasks")
 def create_tasks(
     project_gid: str,
-    tasks: List[Dict[str, Any]] = Body(...),
-) -> List[Dict[str, Any]]:
+    tasks: list[dict[str, any]] = Body(...),
+) -> list[dict[str, any]]:
     """Add tasks to an existing project.
 
     Parameters
@@ -75,17 +65,17 @@ def create_tasks(
     Returns
     -------
     list[dict]
-        List of task objects returned by the Asana API.
+        list of task objects returned by the Asana API.
     """
 
-    return _create_tasks_in_project(project_gid, tasks)
+    return create_tasks_in_project(project_gid, tasks)
 
 
 @router.post("/mapping")
 def generate_mapping(
     workspace_gid: Optional[str] = None,
-    projects: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    projects: Optional[list[str]] = None,
+) -> dict[str, any]:
     """Generate a lightweight mapping of Asana identifiers.
 
     Parameters
@@ -115,14 +105,7 @@ def generate_mapping(
             }
     """
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        _generate_asana_mapping(
-            workspace_gid=workspace_gid,
-            projects=projects,
-            out=tmp.name,
-        )
-        tmp.flush()
-        tmp.seek(0)
-        mapping = json.load(tmp)
-    os.unlink(tmp.name)
-    return mapping
+    return generate_asana_mapping(
+        workspace_gid=workspace_gid,
+        projects=projects,
+    )
