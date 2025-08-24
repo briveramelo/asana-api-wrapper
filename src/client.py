@@ -40,6 +40,35 @@ class _HttpClient:
         # Asana wraps everything in {'data': ...}
         return payload.get("data", payload)
 
+    # --- Add inside _HttpClient ---
+
+    def _request_raw(self, method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None) -> dict:
+        """Return the full JSON payload from Asana (including 'data' and 'next_page')."""
+        url = f"{self.base}/{path.lstrip('/')}"
+        resp = self.sess.request(method, url, params=params, json=json, timeout=self.timeout)
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            e.response = resp
+            raise
+        return resp.json() if resp.content else {}
+
+    def request_paginated(self, method: str, path: str, *, params: Optional[dict] = None) -> List[dict]:
+        """Accumulate all pages of results and return a flat list of items from 'data'."""
+        items: List[dict] = []
+        _params = dict(params or {})
+        while True:
+            # use the same backoff wrapper the rest of the client uses
+            payload = _with_backoff(self._request_raw, method, path, params=_params)
+            page_items = payload.get("data", []) or []
+            items.extend(page_items)
+            next_page = payload.get("next_page") or {}
+            offset = next_page.get("offset")
+            if not offset:
+                break
+            _params["offset"] = offset
+        return items
+
 
 def _wrap_data(payload: dict) -> dict:
     """Accept both {'data': {...}} and flattened {...}; always return {'data': {...}}."""
@@ -76,6 +105,32 @@ def get_client() -> Any:
 
     # ---------- Proxies that mimic the classic SDK surface ----------
 
+    class WorkspacesProxy:
+        def __init__(self, http_client: _HttpClient) -> None:
+            self._http = http_client
+
+    def list(self) -> List[dict]:
+        # GET /workspaces
+        return self._http.request_paginated("GET", "/workspaces")
+
+    class UsersProxy:
+        def __init__(self, http_client: _HttpClient) -> None:
+            self._http = http_client
+
+        def list_for_workspace(self, workspace_gid: str) -> List[dict]:
+            # GET /workspaces/{workspace_gid}/users
+            path = f"/workspaces/{workspace_gid}/users"
+            return self._http.request_paginated("GET", path)
+
+    class TagsProxy:
+        def __init__(self, http_client: _HttpClient) -> None:
+            self._http = http_client
+
+        def list_for_workspace(self, workspace_gid: str) -> List[dict]:
+            # GET /workspaces/{workspace_gid}/tags
+            path = f"/workspaces/{workspace_gid}/tags"
+            return self._http.request_paginated("GET", path)
+
     class ProjectsProxy:
         def __init__(self, http_client: _HttpClient) -> None:
             self._http = http_client
@@ -84,6 +139,12 @@ def get_client() -> Any:
             # Accept flattened or {"data": {...}}
             body = _wrap_data(_normalize_project_payload(payload, settings))
             return _with_backoff(self._http.request, "POST", "/projects", json=body)
+
+        def list_for_workspace(self, workspace_gid: str, *, opt_fields: Optional[str] = None) -> List[dict]:
+            # GET /workspaces/{workspace_gid}/projects
+            params = {"opt_fields": opt_fields} if opt_fields else None
+            path = f"/workspaces/{workspace_gid}/projects"
+            return self._http.request_paginated("GET", path, params=params)
 
     class SectionsProxy:
         def __init__(self, http_client: _HttpClient) -> None:
@@ -105,6 +166,11 @@ def get_client() -> Any:
         def find_by_project(self, project_gid: str) -> List[dict]:
             return self.get_sections_for_project(project_gid)
 
+        def list_for_project(self, project_gid: str) -> List[dict]:
+            # GET /projects/{project_gid}/sections
+            path = f"/projects/{project_gid}/sections"
+            return self._http.request_paginated("GET", path)
+
     class TasksProxy:
         def __init__(self, http_client: _HttpClient) -> None:
             self._http = http_client
@@ -118,12 +184,37 @@ def get_client() -> Any:
             path = f"/tasks/{parent_task_gid}/subtasks"
             return _with_backoff(self._http.request, "POST", path, json=body)
 
+    class CustomFieldSettingsProxy:
+        def __init__(self, http_client: _HttpClient) -> None:
+            self._http = http_client
+
+        def list_for_project(self, project_gid: str, *, opt_fields: Optional[str] = None) -> List[dict]:
+            # GET /projects/{project_gid}/custom_field_settings
+            params = {"opt_fields": opt_fields} if opt_fields else None
+            path = f"/projects/{project_gid}/custom_field_settings"
+            return self._http.request_paginated("GET", path, params=params)
+
+    class CustomFieldsProxy:
+        def __init__(self, http_client: _HttpClient) -> None:
+            self._http = http_client
+
+        def get(self, custom_field_gid: str, *, opt_fields: Optional[str] = None) -> dict:
+            # GET /custom_fields/{gid}
+            params = {"opt_fields": opt_fields} if opt_fields else None
+            path = f"/custom_fields/{custom_field_gid}"
+            return _with_backoff(self._http.request, "GET", path, params=params)
+
     class ClientWrapper:
         def __init__(self, http_client: _HttpClient) -> None:
             self._http = http_client
             self.projects = ProjectsProxy(http_client)
             self.sections = SectionsProxy(http_client)
             self.tasks = TasksProxy(http_client)
+            self.workspaces = WorkspacesProxy(http_client)
+            self.users = UsersProxy(http_client)
+            self.tags = TagsProxy(http_client)
+            self.custom_field_settings = CustomFieldSettingsProxy(http_client)
+            self.custom_fields = CustomFieldsProxy(http_client)
 
         # High-level convenience to satisfy "just pass this JSON and have it created"
         def provision(self, blueprint: dict) -> dict:
