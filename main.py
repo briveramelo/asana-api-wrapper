@@ -2,6 +2,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import typer
+
+from src.config import get_settings
 from src.wrapper import create_project_from_json, create_tasks_in_project
 from src.asana_mapping_generator import generate_asana_mapping
 
@@ -37,12 +39,11 @@ def add_tasks(
 
 @app.command("generate-mapping")
 def generate_mapping(
-    workspace_gid: str | None = typer.Option(None, "--workspace-gid", help="Workspace GID. If omitted, uses settings.default_workspace_gid."),
-    project: list[str] | None = typer.Option(None, "--project", "-P", help="Project name to include (repeatable). If omitted, includes ALL projects in the workspace."),
     out: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
 ):
     # Delegate to the generator function
-    generate_asana_mapping(workspace_gid=workspace_gid, projects=project, out=str(out))
+    settings = get_settings()
+    generate_asana_mapping(workspace_gid=settings.workspace_gid, projects=[settings.project_gid], out=str(out))
     typer.echo(f"Wrote mapping to {out}")
 
 

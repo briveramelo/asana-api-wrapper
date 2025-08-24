@@ -9,6 +9,7 @@ load_dotenv()
 class Settings:
     access_token: str
     workspace_gid: str
+    project_gid: str
     team_gid: str
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
@@ -16,14 +17,16 @@ class Settings:
 def get_settings() -> Settings:
     token = os.getenv("ASANA_ACCESS_TOKEN")
     workspace = os.getenv("WORKSPACE_GID")
+    project = os.getenv("PROJECT_GID")
     team = os.getenv("TEAM_GID")
 
-    missing = [k for k, v in {
+    missing = [key for key, value in {
         "ASANA_ACCESS_TOKEN": token,
         "WORKSPACE_GID": workspace,
-        "TEAM_GID": team,
-    }.items() if not v]
+        # "PROJECT_GID": project,
+        # "TEAM_GID": team,
+    }.items() if not value]
     if missing:
         raise RuntimeError(f"Missing required env vars: {', '.join(missing)}")
 
-    return Settings(access_token=token, workspace_gid=workspace, team_gid=team)
+    return Settings(access_token=token, workspace_gid=workspace, project_gid=project, team_gid=team)
