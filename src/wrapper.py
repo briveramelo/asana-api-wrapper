@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 from typing import Dict, List, Any, Optional
-from .client import get_client, _with_backoff
+from .client import get_client, with_backoff
 from .config import get_settings
 from .models import ProjectSpec, TaskSpec
 
@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 def _create_section(client, project_gid: str, name: str) -> Optional[dict]:
     """Create a section by name; supports both old/new SDK method names."""
     try:
-        return _with_backoff(client.sections.create_section_for_project, project_gid, {"name": name})
+        return with_backoff(client.sections.create_section_for_project, project_gid, {"name": name})
     except AttributeError:
         pass
     try:
-        return _with_backoff(client.sections.create_in_project, project_gid, {"name": name})
+        return with_backoff(client.sections.create_in_project, project_gid, {"name": name})
     except Exception as e:
         logger.warning("Could not create section '%s': %s", name, e)
         return None
@@ -23,11 +23,11 @@ def _create_section(client, project_gid: str, name: str) -> Optional[dict]:
 
 def _list_sections(client, project_gid: str) -> List[dict]:
     try:
-        return list(_with_backoff(client.sections.get_sections_for_project, project_gid))
+        return list(with_backoff(client.sections.get_sections_for_project, project_gid))
     except AttributeError:
         pass
     try:
-        return list(_with_backoff(client.sections.find_by_project, project_gid))
+        return list(with_backoff(client.sections.find_by_project, project_gid))
     except Exception:
         return []
 
@@ -88,7 +88,7 @@ def _create_subtasks_recursive(client, parent_task_gid: str, project_gid: str, s
         # Optional: include project membership for visibility
         if st.get("inherit_project_membership", False):
             sub_payload["projects"] = [project_gid]
-        created = _with_backoff(client.tasks.create, sub_payload)
+        created = with_backoff(client.tasks.create, sub_payload)
         if st.get("subtasks"):
             _create_subtasks_recursive(client, created["gid"], project_gid, st["subtasks"])  # type: ignore[index]
 
@@ -112,7 +112,7 @@ def create_project_from_json(spec: ProjectSpec) -> Dict[str, Any]:
     if project_meta.get("privacy"):
         p_payload["privacy_setting"] = project_meta["privacy"]  # type: ignore[index]
 
-    project = _with_backoff(client.projects.create, p_payload)
+    project = with_backoff(client.projects.create, p_payload)
 
     created_sections: List[dict] = []
     section_name_to_gid: Dict[str, str] = {}
@@ -134,7 +134,7 @@ def create_project_from_json(spec: ProjectSpec) -> Dict[str, Any]:
             logger.warning("Skipping task with no name: %s", t)
             continue
         payload = _build_task_payload(project["gid"], t, section_name_to_gid)
-        created = _with_backoff(client.tasks.create, payload)
+        created = with_backoff(client.tasks.create, payload)
         created_tasks.append(created)
         # Subtasks
         if t.get("subtasks"):
@@ -155,7 +155,7 @@ def create_tasks_in_project(project_gid: str, tasks_spec: List[TaskSpec]) -> Lis
             logger.warning("Skipping task with no name: %s", t)
             continue
         payload = _build_task_payload(project_gid, t, section_name_to_gid)
-        task = _with_backoff(client.tasks.create, payload)
+        task = with_backoff(client.tasks.create, payload)
         created.append(task)
         if t.get("subtasks"):
             _create_subtasks_recursive(client, task["gid"], project_gid, t["subtasks"])  # type: ignore[index]

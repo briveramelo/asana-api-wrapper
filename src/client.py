@@ -1,85 +1,14 @@
 from __future__ import annotations
-import time
 import logging
-from typing import Callable, Any, Dict, List, Optional
-import requests
+from typing import Optional
+
+from .HttpClient import HttpClient, with_backoff
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_ASANA_BASE_URL = "https://app.asana.com/api/1.0"
-_USER_AGENT = "asana-json-provisioner/0.1.0"
 
-# -----------------------------
-# Low-level HTTP helpers
-# -----------------------------
-
-class _HttpClient:
-    def __init__(self, access_token: str, default_timeout: float = 30.0) -> None:
-        self.base = _ASANA_BASE_URL.rstrip("/")
-        self.timeout = default_timeout
-        self.sess = requests.Session()
-        self.sess.headers.update({
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": _USER_AGENT,
-        })
-
-    def request(self, method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None) -> dict:
-        url = f"{self.base}/{path.lstrip('/')}"
-        resp = self.sess.request(method, url, params=params, json=json, timeout=self.timeout)
-        # Raise to trigger _with_backoff logic on 4xx/5xx (including 429)
-        try:
-            resp.raise_for_status()
-        except requests.HTTPError as e:
-            # Attach response for the backoff helper to inspect
-            e.response = resp
-            raise
-        payload = resp.json() if resp.content else {}
-        # Asana wraps everything in {'data': ...}
-        return payload.get("data", payload)
-
-    # --- Add inside _HttpClient ---
-
-    def _request_raw(self, method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None) -> dict:
-        """Return the full JSON payload from Asana (including 'data' and 'next_page')."""
-        url = f"{self.base}/{path.lstrip('/')}"
-        resp = self.sess.request(method, url, params=params, json=json, timeout=self.timeout)
-        try:
-            resp.raise_for_status()
-        except requests.HTTPError as e:
-            e.response = resp
-            raise
-        return resp.json() if resp.content else {}
-
-    def request_paginated(self, method: str, path: str, *, params: Optional[dict] = None) -> List[dict]:
-        """Accumulate all pages of results and return a flat list of items from 'data'."""
-        items: List[dict] = []
-        _params = dict(params or {})
-        while True:
-            # use the same backoff wrapper the rest of the client uses
-            payload = _with_backoff(self._request_raw, method, path, params=_params)
-            page_items = payload.get("data", []) or []
-            items.extend(page_items)
-            next_page = payload.get("next_page") or {}
-            offset = next_page.get("offset")
-            if not offset:
-                break
-            _params["offset"] = offset
-        return items
-
-
-def _wrap_data(payload: dict) -> dict:
-    """Accept both {'data': {...}} and flattened {...}; always return {'data': {...}}."""
-    return payload if "data" in payload else {"data": payload}
-
-
-# -----------------------------
-# Public drop-in: get_client()
-# -----------------------------
-
-def get_client() -> Any:
+def get_client() -> any:
     """Return a minimal Asana client compatible with the legacy SDK-style usage.
 
     Keeps the same attribute names/methods you referenced:
@@ -101,111 +30,111 @@ def get_client() -> Any:
         raise RuntimeError("Missing settings.access_token for Asana API.")
 
     logging.basicConfig(level=getattr(logging, getattr(settings, "log_level", "INFO").upper(), logging.INFO))
-    http = _HttpClient(access_token)
+    http = HttpClient(access_token)
 
     # ---------- Proxies that mimic the classic SDK surface ----------
 
     class WorkspacesProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-    def list(self) -> List[dict]:
+    def list(self) -> list[dict]:
         # GET /workspaces
         return self._http.request_paginated("GET", "/workspaces")
 
     class UsersProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def list_for_workspace(self, workspace_gid: str) -> List[dict]:
+        def list_for_workspace(self, workspace_gid: str) -> list[dict]:
             # GET /workspaces/{workspace_gid}/users
             path = f"/workspaces/{workspace_gid}/users"
             return self._http.request_paginated("GET", path)
 
     class TagsProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def list_for_workspace(self, workspace_gid: str) -> List[dict]:
+        def list_for_workspace(self, workspace_gid: str) -> list[dict]:
             # GET /workspaces/{workspace_gid}/tags
             path = f"/workspaces/{workspace_gid}/tags"
             return self._http.request_paginated("GET", path)
 
     class ProjectsProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
         def create(self, payload: dict) -> dict:
             # Accept flattened or {"data": {...}}
             body = _wrap_data(_normalize_project_payload(payload, settings))
-            return _with_backoff(self._http.request, "POST", "/projects", json=body)
+            return with_backoff(self._http.request, "POST", "/projects", json=body)
 
-        def list_for_workspace(self, workspace_gid: str, *, opt_fields: Optional[str] = None) -> List[dict]:
+        def list_for_workspace(self, workspace_gid: str, *, opt_fields: Optional[str] = None) -> list[dict]:
             # GET /workspaces/{workspace_gid}/projects
             params = {"opt_fields": opt_fields} if opt_fields else None
             path = f"/workspaces/{workspace_gid}/projects"
             return self._http.request_paginated("GET", path, params=params)
 
     class SectionsProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
         def create_section_for_project(self, project_gid: str, payload: dict) -> dict:
             body = _wrap_data(payload)
             path = f"/projects/{project_gid}/sections"
-            return _with_backoff(self._http.request, "POST", path, json=body)
+            return with_backoff(self._http.request, "POST", path, json=body)
 
         # Backwards compatible alias
         def create_in_project(self, project_gid: str, payload: dict) -> dict:
             return self.create_section_for_project(project_gid, payload)
 
-        def get_sections_for_project(self, project_gid: str) -> List[dict]:
+        def get_sections_for_project(self, project_gid: str) -> list[dict]:
             path = f"/projects/{project_gid}/sections"
-            return _with_backoff(self._http.request, "GET", path)
+            return with_backoff(self._http.request, "GET", path)
 
-        def find_by_project(self, project_gid: str) -> List[dict]:
+        def find_by_project(self, project_gid: str) -> list[dict]:
             return self.get_sections_for_project(project_gid)
 
-        def list_for_project(self, project_gid: str) -> List[dict]:
+        def list_for_project(self, project_gid: str) -> list[dict]:
             # GET /projects/{project_gid}/sections
             path = f"/projects/{project_gid}/sections"
             return self._http.request_paginated("GET", path)
 
     class TasksProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
         def create(self, payload: dict) -> dict:
             body = _wrap_data(payload)
-            return _with_backoff(self._http.request, "POST", "/tasks", json=body)
+            return with_backoff(self._http.request, "POST", "/tasks", json=body)
 
         def create_subtask(self, parent_task_gid: str, payload: dict) -> dict:
             body = _wrap_data(payload)
             path = f"/tasks/{parent_task_gid}/subtasks"
-            return _with_backoff(self._http.request, "POST", path, json=body)
+            return with_backoff(self._http.request, "POST", path, json=body)
 
     class CustomFieldSettingsProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def list_for_project(self, project_gid: str, *, opt_fields: Optional[str] = None) -> List[dict]:
+        def list_for_project(self, project_gid: str, *, opt_fields: Optional[str] = None) -> list[dict]:
             # GET /projects/{project_gid}/custom_field_settings
             params = {"opt_fields": opt_fields} if opt_fields else None
             path = f"/projects/{project_gid}/custom_field_settings"
             return self._http.request_paginated("GET", path, params=params)
 
     class CustomFieldsProxy:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
         def get(self, custom_field_gid: str, *, opt_fields: Optional[str] = None) -> dict:
             # GET /custom_fields/{gid}
             params = {"opt_fields": opt_fields} if opt_fields else None
             path = f"/custom_fields/{custom_field_gid}"
-            return _with_backoff(self._http.request, "GET", path, params=params)
+            return with_backoff(self._http.request, "GET", path, params=params)
 
     class ClientWrapper:
-        def __init__(self, http_client: _HttpClient) -> None:
+        def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
             self.projects = ProjectsProxy(http_client)
             self.sections = SectionsProxy(http_client)
@@ -228,14 +157,14 @@ def get_client() -> Any:
             project_gid = project["gid"]
 
             # ---- 2) Sections ----
-            section_name_to_gid: Dict[str, str] = {}
+            section_name_to_gid: dict[str, str] = {}
             for s in blueprint.get("sections", []):
                 name = s["name"]
                 created = self.sections.create_section_for_project(project_gid, {"name": name})
                 section_name_to_gid[name] = created["gid"]
 
             # ---- 3) Tasks ----
-            created_tasks: List[dict] = []
+            created_tasks: list[dict] = []
             for t in blueprint.get("tasks", []):
                 # Build memberships to drop the task in the desired section immediately
                 memberships = []
@@ -280,45 +209,11 @@ def get_client() -> Any:
 
     return ClientWrapper(http)
 
-
-# -----------------------------
-# Retry / backoff identical signature
-# -----------------------------
-
-def _with_backoff(fn: Callable[..., Any], *args, **kwargs) -> Any:
-    """Run an HTTP call with simple 429 (rate-limit) backoff using Retry-After if present."""
-    max_attempts = 5
-    delay = 1.0
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:  # keep broad to avoid coupling to 'requests' types elsewhere
-            resp = getattr(e, "response", None)
-            headers = getattr(resp, "headers", {}) or {}
-            status = (
-                    getattr(resp, "status", None)
-                    or getattr(resp, "status_code", None)
-                    or getattr(e, "status", None)
-            )
-            retry_after = headers.get("Retry-After")
-            if str(status) == "429" or retry_after:
-                # Respect server-provided Retry-After seconds when available
-                sleep_for = float(retry_after) if retry_after else delay
-                logger.warning("Rate limit hit (attempt %s/%s). Sleeping for %.2fs...", attempt, max_attempts, sleep_for)
-                time.sleep(sleep_for)
-                delay = min(delay * 2, 8.0)
-                continue
-            # Surface other HTTP errors
-            logger.error("Asana API error: %s", e)
-            raise
-    raise RuntimeError("Exceeded max retry attempts for Asana API call")
-
-
 # -----------------------------
 # Utility
 # -----------------------------
 
-def _normalize_project_payload(payload: dict, settings: Any) -> dict:
+def _normalize_project_payload(payload: dict, settings: any) -> dict:
     """Map friendly fields to Asana's expected project fields.
 
     - 'privacy': 'private'|'public' -> 'public': bool
@@ -355,3 +250,8 @@ def _normalize_project_payload(payload: dict, settings: Any) -> dict:
             )
 
     return data
+
+
+def _wrap_data(payload: dict) -> dict:
+    """Accept both {'data': {...}} and flattened {...}; always return {'data': {...}}."""
+    return payload if "data" in payload else {"data": payload}
