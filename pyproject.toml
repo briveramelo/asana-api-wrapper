@@ -6,13 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "asana-json-provisioner"
 version = "0.1.0"
 description = "Provision Asana projects and tasks from JSON"
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Brandon Rivera-Melo" }]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 dependencies = [
     "asana>=3.2.1",
     "python-dotenv>=1.0.1",
     "typer (>=0.16.1,<0.17.0)",
+    "requests (>=2.32.5,<3.0.0)",
 ]
 
 [project.scripts]
