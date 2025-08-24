@@ -41,7 +41,6 @@ def add_tasks(
 def generate_mapping(
     out: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
 ):
-    # Delegate to the generator function
     settings = get_settings()
     generate_asana_mapping(workspace_gid=settings.workspace_gid, projects=[settings.project_gid], out=str(out))
     typer.echo(f"Wrote mapping to {out}")

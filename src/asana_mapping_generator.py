@@ -14,8 +14,8 @@ import json
 import logging
 from typing import Any
 
-from asana_client import get_client
-from config import get_settings
+from .asana_client import get_client
+from .config import get_settings
 
 logger = logging.getLogger("asana-mapper")
 logging.basicConfig(level=logging.INFO)
