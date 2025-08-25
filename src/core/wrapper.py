@@ -3,7 +3,15 @@ from typing import Any
 
 from .asana_client import get_client, with_backoff
 from .config import get_settings
-from .models import ProjectMeta, ProjectSpec, TaskSpec
+from .models import (
+    ProjectMeta,
+    ProjectRecord,
+    ProjectResult,
+    ProjectSpec,
+    SectionResult,
+    TaskResult,
+    TaskSpec,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -96,11 +104,8 @@ def _create_subtasks_recursive(client, parent_task_gid: str, project_gid: str, s
             _create_subtasks_recursive(client, created["gid"], project_gid, st.subtasks)
 
 
-def create_project_from_json(spec: ProjectSpec) -> dict[str, Any]:
-    """Create a project (and optional sections + tasks) from a JSON-like dict.
-
-    Returns a dictionary with keys: project, sections (list), tasks (list).
-    """
+def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
+    """Create a project and return structured metadata."""
     client = get_client()
     settings = get_settings()
 
@@ -117,20 +122,22 @@ def create_project_from_json(spec: ProjectSpec) -> dict[str, Any]:
 
     project = with_backoff(client.projects.create, p_payload)
 
-    created_sections: list[dict] = []
+    created_sections: list[SectionResult] = []
     section_name_to_gid: dict[str, str] = {}
 
     # Create sections if provided
     for s in spec.sections or []:
         sec = _create_section(client, project["gid"], s.name or "Section")
         if sec:
-            created_sections.append(sec)
-            section_name_to_gid[sec["name"]] = sec["gid"]
+            sec_model = SectionResult.model_validate(sec)
+            created_sections.append(sec_model)
+            if sec_model.name:
+                section_name_to_gid[sec_model.name] = sec_model.gid
 
     # Also map any preexisting sections (covers cases where project template has them)
     section_name_to_gid.update(_map_section_names(client, project["gid"]))
 
-    created_tasks: list[dict] = []
+    created_tasks: list[TaskResult] = []
     # Create tasks
     for t in spec.tasks or []:
         if not t.name:
@@ -138,29 +145,32 @@ def create_project_from_json(spec: ProjectSpec) -> dict[str, Any]:
             continue
         payload = _build_task_payload(project["gid"], t, section_name_to_gid)
         created = with_backoff(client.tasks.create, payload)
-        created_tasks.append(created)
+        task_model = TaskResult.model_validate(created)
+        created_tasks.append(task_model)
         # Subtasks
         if t.subtasks:
-            _create_subtasks_recursive(client, created["gid"], project["gid"], t.subtasks)
+            _create_subtasks_recursive(client, task_model.gid, project["gid"], t.subtasks)
 
-    return {"project": project, "sections": created_sections, "tasks": created_tasks}
+    project_model = ProjectRecord.model_validate(project)
+    return ProjectResult(project=project_model, sections=created_sections, tasks=created_tasks)
 
 
-def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> list[dict]:
+def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> list[TaskResult]:
     """Add tasks to an existing project from a list of TaskSpec models."""
     client = get_client()
     # Map section names if caller uses section_name
     section_name_to_gid = _map_section_names(client, project_gid)
 
-    created: list[dict] = []
+    created: list[TaskResult] = []
     for t in tasks_spec:
         if not t.name:
             logger.warning("Skipping task with no name: %s", t)
             continue
         payload = _build_task_payload(project_gid, t, section_name_to_gid)
         task = with_backoff(client.tasks.create, payload)
-        created.append(task)
+        task_model = TaskResult.model_validate(task)
+        created.append(task_model)
         if t.subtasks:
-            _create_subtasks_recursive(client, task["gid"], project_gid, t.subtasks)
+            _create_subtasks_recursive(client, task_model.gid, project_gid, t.subtasks)
     return created
 

@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SectionSpec(BaseModel):
@@ -44,4 +44,36 @@ def project_spec_schema() -> dict[str, Any]:
 
 # Resolve forward references for TaskSpec
 TaskSpec.model_rebuild()
+
+
+class AsanaObject(BaseModel):
+    gid: str
+    name: str | None = None
+    model_config = ConfigDict(extra="allow")
+
+
+class SectionResult(AsanaObject):
+    pass
+
+
+class TaskResult(AsanaObject):
+    pass
+
+
+class ProjectRecord(AsanaObject):
+    notes: str | None = None
+
+
+class ProjectResult(BaseModel):
+    project: ProjectRecord
+    sections: list[SectionResult] = []
+    tasks: list[TaskResult] = []
+
+
+class MappingResult(BaseModel):
+    projects: dict[str, str]
+    sections: dict[str, dict[str, str]]
+    custom_fields: dict[str, dict[str, Any]]
+    tags: dict[str, str]
+    users: dict[str, str]
 
