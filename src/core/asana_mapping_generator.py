@@ -9,8 +9,6 @@ Example:
         --out asana_mapping.json
 """
 
-from __future__ import annotations
-import json
 import logging
 from typing import Any
 
@@ -100,8 +98,7 @@ def _collect_tags(client, workspace_gid: str) -> dict[str, str]:
 def generate_asana_mapping(
     workspace_gid: str | None = None,
     projects: list[str] | None = None,
-    out: str = "asana_mapping.json",
-) -> None:
+) -> dict[str, Any]:
     client = get_client()
     settings = get_settings()
 
@@ -135,9 +132,12 @@ def generate_asana_mapping(
         mapping["sections"][proj_name] = _collect_sections(client, proj_gid)
         mapping["custom_fields"][proj_name] = _collect_custom_fields_for_project(client, proj_gid)
 
-    # Persist to disk
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2, ensure_ascii=False, sort_keys=True)
+    logger.info(
+        "Generated mapping with projects=%d, users=%d, tags=%d",
+        len(chosen),
+        len(mapping["users"]),
+        len(mapping["tags"]),
+    )
 
-    logger.info("Wrote %s with projects=%d, users=%d, tags=%d",
-                out, len(chosen), len(mapping["users"]), len(mapping["tags"]))
+    return mapping
+
