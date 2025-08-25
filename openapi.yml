@@ -13,7 +13,7 @@ paths:
         \   \"tasks\": [TaskSpec, ...]\n        }\n\n    ``TaskSpec`` includes keys\
         \ like \"name\", \"notes\", \"assignee\", \"due_on\",\n    \"section\"/\"\
         section_name\", and optional ``subtasks`` which is a list of\n    ``TaskSpec``.\n\
-        \nReturns\n-------\nProjectCreationResult\n    ``{\"project\": {...}, \"sections\"\
+        \nReturns\n-------\nProjectResult\n    ``{\"project\": {...}, \"sections\"\
         : [...], \"tasks\": [...]}``"
       operationId: create_project_project_post
       requestBody:
@@ -28,7 +28,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectCreationResult'
+                $ref: '#/components/schemas/ProjectResult'
         '422':
           description: Validation Error
           content:
@@ -45,8 +45,8 @@ paths:
         \ description\",\n          \"assignee\": \"user_gid\",\n          \"due_on\"\
         : \"YYYY-MM-DD\",\n          \"section\": \"section_gid\" | null,\n      \
         \    \"section_name\": \"Section\",\n          \"subtasks\": [TaskSpec, ...]\n\
-        \        }\n\nReturns\n-------\nTasksCreationResult\n    Wrapper around the\
-        \ list of task objects returned by the Asana API."
+        \        }\n\nReturns\n-------\nlist[TaskResult]\n    List of task objects\
+        \ returned by the Asana API."
       operationId: create_tasks_project__project_gid__tasks_post
       parameters:
       - name: project_gid
@@ -70,7 +70,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TasksCreationResult'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskResult'
+                title: Response Create Tasks Project  Project Gid  Tasks Post
         '422':
           description: Validation Error
           content:
@@ -84,7 +87,7 @@ paths:
         ----------\nworkspace_gid : str, optional\n    Workspace to index. Defaults\
         \ to ``settings.workspace_gid`` if omitted.\nprojects : list[str], optional\n\
         \    Optional list of project names to include; defaults to all projects in\
-        \ the\n    workspace.\n\nReturns\n-------\nMappingModel\n    Mapping with\
+        \ the\n    workspace.\n\nReturns\n-------\nMappingResult\n    Mapping with\
         \ schema::\n\n        {\n          \"projects\": {\"Project\": \"gid\"},\n\
         \          \"sections\": {\"Project\": {\"Section\": \"gid\"}},\n        \
         \  \"custom_fields\": {\n            \"Project\": {\n              \"Field\"\
@@ -118,7 +121,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MappingModel'
+                $ref: '#/components/schemas/MappingResult'
         '422':
           description: Validation Error
           content:
@@ -136,7 +139,7 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
-    MappingModel:
+    MappingResult:
       properties:
         projects:
           additionalProperties:
@@ -173,31 +176,7 @@ components:
       - custom_fields
       - tags
       - users
-      title: MappingModel
-    ProjectCreationResult:
-      properties:
-        project:
-          additionalProperties: true
-          type: object
-          title: Project
-        sections:
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-          title: Sections
-        tasks:
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-          title: Tasks
-      type: object
-      required:
-      - project
-      - sections
-      - tasks
-      title: ProjectCreationResult
+      title: MappingResult
     ProjectMeta:
       properties:
         name:
@@ -217,6 +196,46 @@ components:
           title: Privacy
       type: object
       title: ProjectMeta
+    ProjectRecord:
+      properties:
+        gid:
+          type: string
+          title: Gid
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      additionalProperties: true
+      type: object
+      required:
+      - gid
+      title: ProjectRecord
+    ProjectResult:
+      properties:
+        project:
+          $ref: '#/components/schemas/ProjectRecord'
+        sections:
+          items:
+            $ref: '#/components/schemas/SectionResult'
+          type: array
+          title: Sections
+          default: []
+        tasks:
+          items:
+            $ref: '#/components/schemas/TaskResult'
+          type: array
+          title: Tasks
+          default: []
+      type: object
+      required:
+      - project
+      title: ProjectResult
     ProjectSpec:
       properties:
         project:
@@ -239,6 +258,21 @@ components:
           title: Tasks
       type: object
       title: ProjectSpec
+    SectionResult:
+      properties:
+        gid:
+          type: string
+          title: Gid
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+      additionalProperties: true
+      type: object
+      required:
+      - gid
+      title: SectionResult
     SectionSpec:
       properties:
         name:
@@ -248,6 +282,21 @@ components:
           title: Name
       type: object
       title: SectionSpec
+    TaskResult:
+      properties:
+        gid:
+          type: string
+          title: Gid
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+      additionalProperties: true
+      type: object
+      required:
+      - gid
+      title: TaskResult
     TaskSpec:
       properties:
         name:
@@ -319,18 +368,6 @@ components:
           title: Inherit Project Membership
       type: object
       title: TaskSpec
-    TasksCreationResult:
-      properties:
-        tasks:
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-          title: Tasks
-      type: object
-      required:
-      - tasks
-      title: TasksCreationResult
     ValidationError:
       properties:
         loc:
