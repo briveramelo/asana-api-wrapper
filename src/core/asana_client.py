@@ -122,9 +122,20 @@ def get_client() -> any:
             path = f"/projects/{project_gid}/custom_field_settings"
             return self._http.request_paginated("GET", path, params=params)
 
+        def add_to_project(self, project_gid: str, custom_field_gid: str) -> dict:
+            # POST /projects/{project_gid}/addCustomFieldSetting
+            body = _wrap_data({"custom_field": custom_field_gid})
+            path = f"/projects/{project_gid}/addCustomFieldSetting"
+            return with_backoff(self._http.request, "POST", path, json=body)
+
     class CustomFieldsProxy:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
+
+        def create(self, payload: dict) -> dict:
+            # POST /custom_fields
+            body = _wrap_data(payload)
+            return with_backoff(self._http.request, "POST", "/custom_fields", json=body)
 
         def get(self, custom_field_gid: str, *, opt_fields: Optional[str] = None) -> dict:
             # GET /custom_fields/{gid}

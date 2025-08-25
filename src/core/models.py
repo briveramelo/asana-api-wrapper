@@ -28,9 +28,22 @@ class ProjectMeta(BaseModel):
     privacy: str | None = None  # "private" | "public_to_team" etc.
 
 
+class EnumOptionSpec(BaseModel):
+    name: str
+    color: str | None = None
+
+
+class CustomFieldSpec(BaseModel):
+    name: str
+    resource_subtype: str
+    description: str | None = None
+    options: list[EnumOptionSpec] | None = None
+
+
 class ProjectSpec(BaseModel):
     project: ProjectMeta | None = None
     sections: list[SectionSpec] | None = None
+    custom_fields: list[CustomFieldSpec] | None = None
     tasks: list[TaskSpec] | None = None
 
 

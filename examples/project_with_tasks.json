@@ -4,6 +4,39 @@
     "notes": "Q4 launch plan",
     "privacy": "private"
   },
+  "custom_fields": [
+    {
+      "name": "Urgency",
+      "resource_subtype": "enum",
+      "options": [
+        { "name": "Urgent", "color": "red" },
+        { "name": "Soon", "color": "yellow" },
+        { "name": "Eventually", "color": "blue" }
+      ]
+    },
+    {
+      "name": "Effort",
+      "resource_subtype": "number"
+    },
+    {
+      "name": "Workstream",
+      "resource_subtype": "enum",
+      "options": [
+        { "name": "Engineering", "color": "blue" },
+        { "name": "Design", "color": "purple" },
+        { "name": "Marketing", "color": "green" }
+      ]
+    },
+    {
+      "name": "Importance",
+      "resource_subtype": "enum",
+      "options": [
+        { "name": "High", "color": "red" },
+        { "name": "Medium", "color": "yellow" },
+        { "name": "Low", "color": "green" }
+      ]
+    }
+  ],
   "sections": [
     { "name": "Backlog" },
     { "name": "In Progress" },
@@ -17,7 +50,12 @@
       "due_on": "2025-09-01",
       "followers": ["1200123", "1200456"],
       "tags": ["1200789"],
-      "custom_fields": { "123456": "High" },
+      "custom_fields": {
+        "Urgency": "Urgent",
+        "Effort": 5,
+        "Workstream": "Engineering",
+        "Importance": "High"
+      },
       "section_name": "Backlog",
       "subtasks": [
         { "name": "Book room" },
@@ -27,6 +65,12 @@
     {
       "name": "Design Assets",
       "notes": "Hero image + variants",
+      "custom_fields": {
+        "Urgency": "Soon",
+        "Effort": 3,
+        "Workstream": "Design",
+        "Importance": "Low"
+      },
       "section_name": "In Progress"
     }
   ]
