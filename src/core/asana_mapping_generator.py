@@ -45,10 +45,10 @@ def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, An
     """
     Returns:
     {
-      "Priority": {
+      "Importance": {
         "field_gid": "...",
         "resource_subtype": "enum",
-        "options": {"High": "...", "Medium": "..."}
+        "options": {"High": "...", "Medium": "...", "Low": "..."}
       },
       ...
     }

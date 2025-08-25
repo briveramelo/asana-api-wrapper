@@ -51,7 +51,53 @@ def _map_section_names(client, project_gid: str) -> dict[str, str]:
     return mapping
 
 
-def _build_task_payload(project_gid: str, t: TaskSpec, section_name_to_gid: dict[str, str]) -> dict[str, Any]:
+def _map_custom_fields(client, project_gid: str) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    name_to_gid: dict[str, str] = {}
+    option_map: dict[str, dict[str, str]] = {}
+    field_settings = client.custom_field_settings.list_for_project(
+        project_gid, opt_fields="custom_field.name,custom_field.enum_options"
+    )
+    for setting in field_settings:
+        field = setting.get("custom_field") or {}
+        name = field.get("name")
+        gid = field.get("gid")
+        if name and gid:
+            name_to_gid[name] = gid
+            options_map: dict[str, str] = {}
+            for option in field.get("enum_options") or []:
+                option_name = option.get("name")
+                option_gid = option.get("gid")
+                if option_name and option_gid:
+                    options_map[option_name] = option_gid
+            if options_map:
+                option_map[name] = options_map
+                option_map[gid] = options_map
+    return name_to_gid, option_map
+
+
+def _translate_custom_fields(
+    custom_fields: dict[str, Any],
+    name_to_gid: dict[str, str],
+    option_map: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    translated: dict[str, Any] = {}
+    for key, value in custom_fields.items():
+        field_gid = name_to_gid.get(key, key)
+        if isinstance(value, str):
+            options = option_map.get(key) or option_map.get(field_gid) or {}
+            translated[field_gid] = options.get(value, value)
+        else:
+            translated[field_gid] = value
+    return translated
+
+
+def _build_task_payload(
+    project_gid: str,
+    t: TaskSpec,
+    section_name_to_gid: dict[str, str],
+    custom_field_name_to_gid: dict[str, str],
+    custom_field_option_map: dict[str, dict[str, str]],
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "name": t.name,
         "projects": [project_gid],
@@ -67,7 +113,11 @@ def _build_task_payload(project_gid: str, t: TaskSpec, section_name_to_gid: dict
     if t.tags is not None:
         payload["tags"] = t.tags
     if t.custom_fields is not None:
-        payload["custom_fields"] = t.custom_fields
+        payload["custom_fields"] = _translate_custom_fields(
+            t.custom_fields,
+            custom_field_name_to_gid,
+            custom_field_option_map,
+        )
 
     # Section placement (prefer explicit GID; else name lookup)
     memberships = []
@@ -82,7 +132,14 @@ def _build_task_payload(project_gid: str, t: TaskSpec, section_name_to_gid: dict
     return payload
 
 
-def _create_subtasks_recursive(client, parent_task_gid: str, project_gid: str, subtasks: list[TaskSpec]) -> None:
+def _create_subtasks_recursive(
+    client,
+    parent_task_gid: str,
+    project_gid: str,
+    subtasks: list[TaskSpec],
+    custom_field_name_to_gid: dict[str, str],
+    custom_field_option_map: dict[str, dict[str, str]],
+) -> None:
     for st in subtasks:
         sub_payload = {"name": st.name, "parent": parent_task_gid}
         # Optional attributes for subtasks
@@ -95,13 +152,24 @@ def _create_subtasks_recursive(client, parent_task_gid: str, project_gid: str, s
         if st.tags is not None:
             sub_payload["tags"] = st.tags
         if st.custom_fields is not None:
-            sub_payload["custom_fields"] = st.custom_fields
+            sub_payload["custom_fields"] = _translate_custom_fields(
+                st.custom_fields,
+                custom_field_name_to_gid,
+                custom_field_option_map,
+            )
         # Optional: include project membership for visibility
         if st.inherit_project_membership:
             sub_payload["projects"] = [project_gid]
         created = with_backoff(client.tasks.create, sub_payload)
         if st.subtasks:
-            _create_subtasks_recursive(client, created["gid"], project_gid, st.subtasks)
+            _create_subtasks_recursive(
+                client,
+                created["gid"],
+                project_gid,
+                st.subtasks,
+                custom_field_name_to_gid,
+                custom_field_option_map,
+            )
 
 
 def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
@@ -137,19 +205,55 @@ def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
     # Also map any preexisting sections (covers cases where project template has them)
     section_name_to_gid.update(_map_section_names(client, project["gid"]))
 
+    # Create custom fields and attach to project
+    for field_spec in spec.custom_fields or []:
+        field_payload: dict[str, Any] = {
+            "name": field_spec.name,
+            "resource_subtype": field_spec.resource_subtype,
+            "workspace": settings.workspace_gid,
+        }
+        if field_spec.description:
+            field_payload["description"] = field_spec.description
+        if field_spec.options:
+            field_payload["enum_options"] = [
+                {"name": option.name, **({"color": option.color} if option.color else {})}
+                for option in field_spec.options
+            ]
+        created_field = with_backoff(client.custom_fields.create, field_payload)
+        with_backoff(
+            client.custom_field_settings.add_to_project,
+            project["gid"],
+            created_field["gid"],
+        )
+
+    custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project["gid"])
+
     created_tasks: list[TaskResult] = []
     # Create tasks
     for t in spec.tasks or []:
         if not t.name:
             logger.warning("Skipping task with no name: %s", t)
             continue
-        payload = _build_task_payload(project["gid"], t, section_name_to_gid)
+        payload = _build_task_payload(
+            project["gid"],
+            t,
+            section_name_to_gid,
+            custom_field_name_to_gid,
+            custom_field_option_map,
+        )
         created = with_backoff(client.tasks.create, payload)
         task_model = TaskResult.model_validate(created)
         created_tasks.append(task_model)
         # Subtasks
         if t.subtasks:
-            _create_subtasks_recursive(client, task_model.gid, project["gid"], t.subtasks)
+            _create_subtasks_recursive(
+                client,
+                task_model.gid,
+                project["gid"],
+                t.subtasks,
+                custom_field_name_to_gid,
+                custom_field_option_map,
+            )
 
     project_model = ProjectRecord.model_validate(project)
     return ProjectResult(project=project_model, sections=created_sections, tasks=created_tasks)
@@ -160,17 +264,31 @@ def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> lis
     client = get_client()
     # Map section names if caller uses section_name
     section_name_to_gid = _map_section_names(client, project_gid)
+    custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project_gid)
 
     created: list[TaskResult] = []
     for t in tasks_spec:
         if not t.name:
             logger.warning("Skipping task with no name: %s", t)
             continue
-        payload = _build_task_payload(project_gid, t, section_name_to_gid)
+        payload = _build_task_payload(
+            project_gid,
+            t,
+            section_name_to_gid,
+            custom_field_name_to_gid,
+            custom_field_option_map,
+        )
         task = with_backoff(client.tasks.create, payload)
         task_model = TaskResult.model_validate(task)
         created.append(task_model)
         if t.subtasks:
-            _create_subtasks_recursive(client, task_model.gid, project_gid, t.subtasks)
+            _create_subtasks_recursive(
+                client,
+                task_model.gid,
+                project_gid,
+                t.subtasks,
+                custom_field_name_to_gid,
+                custom_field_option_map,
+            )
     return created
 
