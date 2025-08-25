@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 import yaml
 
-from .llm_tools import router
+from src.web.llm_tools import router
 
 
 def export_openapi_yaml(out: Path) -> Path:

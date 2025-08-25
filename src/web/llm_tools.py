@@ -5,9 +5,9 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body
 from pydantic import BaseModel
 
-from .wrapper import create_project_from_json, create_tasks_in_project
-from .asana_mapping_generator import generate_asana_mapping
-from .models import ProjectSpec, TaskSpec
+from src.core.wrapper import create_project_from_json, create_tasks_in_project
+from src.core.asana_mapping_generator import generate_asana_mapping
+from src.core.models import ProjectSpec, TaskSpec
 
 router = APIRouter()
 

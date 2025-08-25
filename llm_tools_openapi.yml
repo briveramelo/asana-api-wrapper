@@ -1,0 +1,354 @@
+openapi: 3.1.0
+info:
+  title: FastAPI
+  version: 0.1.0
+paths:
+  /project:
+    post:
+      summary: Create Project
+      description: "Create an Asana project from a JSON specification.\n\nParameters\n\
+        ----------\nspec : ProjectSpec\n    JSON object describing the project to\
+        \ create. Schema::\n\n        {\n          \"project\": {\"name\": \"My Project\"\
+        , ...},\n          \"sections\": [{\"name\": \"Section\"}, ...],\n       \
+        \   \"tasks\": [TaskSpec, ...]\n        }\n\n    ``TaskSpec`` includes keys\
+        \ like \"name\", \"notes\", \"assignee\", \"due_on\",\n    \"section\"/\"\
+        section_name\", and optional ``subtasks`` which is a list of\n    ``TaskSpec``.\n\
+        \nReturns\n-------\nProjectCreationResult\n    ``{\"project\": {...}, \"sections\"\
+        : [...], \"tasks\": [...]}``"
+      operationId: create_project_project_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSpec'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCreationResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /project/{project_gid}/tasks:
+    post:
+      summary: Create Tasks
+      description: "Add tasks to an existing project.\n\nParameters\n----------\n\
+        project_gid : str\n    GID of the target project.\ntasks : list[TaskSpec]\n\
+        \    JSON array describing tasks to create. Each ``TaskSpec`` has the schema::\n\
+        \n        {\n          \"name\": \"Task name\",\n          \"notes\": \"Optional\
+        \ description\",\n          \"assignee\": \"user_gid\",\n          \"due_on\"\
+        : \"YYYY-MM-DD\",\n          \"section\": \"section_gid\" | null,\n      \
+        \    \"section_name\": \"Section\",\n          \"subtasks\": [TaskSpec, ...]\n\
+        \        }\n\nReturns\n-------\nTasksCreationResult\n    Wrapper around the\
+        \ list of task objects returned by the Asana API."
+      operationId: create_tasks_project__project_gid__tasks_post
+      parameters:
+      - name: project_gid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Gid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaskSpec'
+              title: Tasks
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TasksCreationResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /mapping:
+    post:
+      summary: Generate Mapping
+      description: "Generate a lightweight mapping of Asana identifiers.\n\nParameters\n\
+        ----------\nworkspace_gid : str, optional\n    Workspace to index. Defaults\
+        \ to ``settings.workspace_gid`` if omitted.\nprojects : list[str], optional\n\
+        \    Optional list of project names to include; defaults to all projects in\
+        \ the\n    workspace.\n\nReturns\n-------\nMappingModel\n    Mapping with\
+        \ schema::\n\n        {\n          \"projects\": {\"Project\": \"gid\"},\n\
+        \          \"sections\": {\"Project\": {\"Section\": \"gid\"}},\n        \
+        \  \"custom_fields\": {\n            \"Project\": {\n              \"Field\"\
+        : {\"field_gid\": \"...\", \"resource_subtype\": \"enum\",\n             \
+        \            \"options\": {\"Opt\": \"gid\"}}\n            }\n          },\n\
+        \          \"tags\": {\"Tag\": \"gid\"},\n          \"users\": {\"User\":\
+        \ \"gid\"}\n        }"
+      operationId: generate_mapping_mapping_post
+      parameters:
+      - name: workspace_gid
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Workspace Gid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - type: array
+                items:
+                  type: string
+              - type: 'null'
+              title: Projects
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingModel'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    MappingModel:
+      properties:
+        projects:
+          additionalProperties:
+            type: string
+          type: object
+          title: Projects
+        sections:
+          additionalProperties:
+            additionalProperties:
+              type: string
+            type: object
+          type: object
+          title: Sections
+        custom_fields:
+          additionalProperties:
+            additionalProperties: true
+            type: object
+          type: object
+          title: Custom Fields
+        tags:
+          additionalProperties:
+            type: string
+          type: object
+          title: Tags
+        users:
+          additionalProperties:
+            type: string
+          type: object
+          title: Users
+      type: object
+      required:
+      - projects
+      - sections
+      - custom_fields
+      - tags
+      - users
+      title: MappingModel
+    ProjectCreationResult:
+      properties:
+        project:
+          additionalProperties: true
+          type: object
+          title: Project
+        sections:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Sections
+        tasks:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Tasks
+      type: object
+      required:
+      - project
+      - sections
+      - tasks
+      title: ProjectCreationResult
+    ProjectMeta:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        privacy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Privacy
+      type: object
+      title: ProjectMeta
+    ProjectSpec:
+      properties:
+        project:
+          anyOf:
+          - $ref: '#/components/schemas/ProjectMeta'
+          - type: 'null'
+        sections:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/SectionSpec'
+            type: array
+          - type: 'null'
+          title: Sections
+        tasks:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/TaskSpec'
+            type: array
+          - type: 'null'
+          title: Tasks
+      type: object
+      title: ProjectSpec
+    SectionSpec:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+      type: object
+      title: SectionSpec
+    TaskSpec:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        assignee:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Assignee
+        due_on:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Due On
+        due_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Due At
+        followers:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Followers
+        tags:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Tags
+        custom_fields:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Custom Fields
+        section:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section
+        section_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Section Name
+        subtasks:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/TaskSpec'
+            type: array
+          - type: 'null'
+          title: Subtasks
+        inherit_project_membership:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Inherit Project Membership
+      type: object
+      title: TaskSpec
+    TasksCreationResult:
+      properties:
+        tasks:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Tasks
+      type: object
+      required:
+      - tasks
+      title: TasksCreationResult
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
