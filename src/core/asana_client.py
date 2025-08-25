@@ -1,8 +1,8 @@
 import logging
 from typing import Optional
 
-from .HttpClient import HttpClient, with_backoff
-from .config import get_settings
+from src.core.HttpClient import HttpClient, with_backoff
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 

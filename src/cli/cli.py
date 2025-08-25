@@ -5,7 +5,7 @@ import typer
 from src.core.config import get_settings
 from src.core.wrapper import create_project_from_json, create_tasks_in_project
 from src.core.asana_mapping_generator import generate_asana_mapping
-from src.core.openapi_exporter import export_openapi_yaml
+from src.web.openapi_exporter import export_openapi_yaml
 from src.core.models import ProjectSpec, TaskSpec
 
 app = typer.Typer(add_completion=False, help="Provision Asana objects from JSON")

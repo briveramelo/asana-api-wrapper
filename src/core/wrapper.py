@@ -1,9 +1,9 @@
 import logging
 from typing import Any
 
-from .asana_client import get_client, with_backoff
-from .config import get_settings
-from .models import (
+from src.core.asana_client import get_client, with_backoff
+from src.core.config import get_settings
+from src.core.models import (
     ProjectMeta,
     ProjectRecord,
     ProjectResult,
