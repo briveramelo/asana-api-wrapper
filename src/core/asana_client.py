@@ -3,6 +3,7 @@ from typing import Optional
 
 from src.core.HttpClient import HttpClient, with_backoff
 from src.core.config import get_settings
+from src.core.models import ProjectRecord, ProjectResult, SectionResult, TagResult, TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -54,74 +55,84 @@ def get_client() -> any:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def list_for_workspace(self, workspace_gid: str) -> list[dict]:
+        def list_for_workspace(self, workspace_gid: str) -> list[TagResult]:
             # GET /workspaces/{workspace_gid}/tags
             path = f"/workspaces/{workspace_gid}/tags"
-            return self._http.request_paginated("GET", path)
+            items = self._http.request_paginated("GET", path)
+            return [TagResult.model_validate(item) for item in items]
 
-        def create(self, payload: dict) -> dict:
+        def create(self, payload: dict) -> TagResult:
             # POST /tags
             body = _wrap_data(payload)
-            return with_backoff(self._http.request, "POST", "/tags", json=body)
+            result = with_backoff(self._http.request, "POST", "/tags", json=body)
+            return TagResult.model_validate(result)
 
     class ProjectsProxy:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def create(self, payload: dict) -> dict:
+        def create(self, payload: dict) -> ProjectRecord:
             # Accept flattened or {"data": {...}}
             body = _wrap_data(_normalize_project_payload(payload, settings))
-            return with_backoff(self._http.request, "POST", "/projects", json=body)
+            result = with_backoff(self._http.request, "POST", "/projects", json=body)
+            return ProjectRecord.model_validate(result)
 
-        def list_for_workspace(self, workspace_gid: str, *, opt_fields: Optional[str] = None) -> list[dict]:
+        def list_for_workspace(self, workspace_gid: str, *, opt_fields: Optional[str] = None) -> list[ProjectRecord]:
             # GET /workspaces/{workspace_gid}/projects
             params = {"opt_fields": opt_fields} if opt_fields else None
             path = f"/workspaces/{workspace_gid}/projects"
-            return self._http.request_paginated("GET", path, params=params)
+            items = self._http.request_paginated("GET", path, params=params)
+            return [ProjectRecord.model_validate(item) for item in items]
 
     class SectionsProxy:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def create_section_for_project(self, project_gid: str, payload: dict) -> dict:
+        def create_section_for_project(self, project_gid: str, payload: dict) -> SectionResult:
             body = _wrap_data(payload)
             path = f"/projects/{project_gid}/sections"
-            return with_backoff(self._http.request, "POST", path, json=body)
+            result = with_backoff(self._http.request, "POST", path, json=body)
+            return SectionResult.model_validate(result)
 
         # Backwards compatible alias
-        def create_in_project(self, project_gid: str, payload: dict) -> dict:
+        def create_in_project(self, project_gid: str, payload: dict) -> SectionResult:
             return self.create_section_for_project(project_gid, payload)
 
-        def get_sections_for_project(self, project_gid: str) -> list[dict]:
+        def get_sections_for_project(self, project_gid: str) -> list[SectionResult]:
             path = f"/projects/{project_gid}/sections"
-            return with_backoff(self._http.request, "GET", path)
+            items = with_backoff(self._http.request, "GET", path)
+            return [SectionResult.model_validate(item) for item in items]
 
-        def find_by_project(self, project_gid: str) -> list[dict]:
+        def find_by_project(self, project_gid: str) -> list[SectionResult]:
             return self.get_sections_for_project(project_gid)
 
-        def list_for_project(self, project_gid: str) -> list[dict]:
+        def list_for_project(self, project_gid: str) -> list[SectionResult]:
             # GET /projects/{project_gid}/sections
             path = f"/projects/{project_gid}/sections"
-            return self._http.request_paginated("GET", path)
+            items = self._http.request_paginated("GET", path)
+            return [SectionResult.model_validate(item) for item in items]
 
     class TasksProxy:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-        def create(self, payload: dict) -> dict:
+        def create(self, payload: dict) -> TaskResult:
             body = _wrap_data(payload)
-            return with_backoff(self._http.request, "POST", "/tasks", json=body)
+            result = with_backoff(self._http.request, "POST", "/tasks", json=body)
+            return TaskResult.model_validate(result)
 
-        def create_subtask(self, parent_task_gid: str, payload: dict) -> dict:
+        def create_subtask(self, parent_task_gid: str, payload: dict) -> TaskResult:
             body = _wrap_data(payload)
             path = f"/tasks/{parent_task_gid}/subtasks"
-            return with_backoff(self._http.request, "POST", path, json=body)
+            result = with_backoff(self._http.request, "POST", path, json=body)
+            return TaskResult.model_validate(result)
 
-        def add_tag(self, task_gid: str, tag_gid: str) -> dict:
+        def add_tag(self, task_gid: str, tag_gid: str) -> TagResult:
             # POST /tasks/{task_gid}/addTag
             body = _wrap_data({"tag": tag_gid})
             path = f"/tasks/{task_gid}/addTag"
-            return with_backoff(self._http.request, "POST", path, json=body)
+            result = with_backoff(self._http.request, "POST", path, json=body)
+            return TagResult.model_validate(result)
 
     class CustomFieldSettingsProxy:
         def __init__(self, http_client: HttpClient) -> None:
@@ -167,66 +178,51 @@ def get_client() -> any:
             self.custom_fields = CustomFieldsProxy(http_client)
 
         # High-level convenience to satisfy "just pass this JSON and have it created"
-        def provision(self, blueprint: dict) -> dict:
+        def provision(self, blueprint: dict) -> ProjectResult:
             """Create a full project tree from a dict of the form shown in the prompt.
 
             Returns a summary with created Global IDs (GIDs).
             """
-            # ---- 1) Project ----
             project_payload = dict(blueprint.get("project", {}))
             project = self.projects.create(project_payload)
-            project_gid = project["gid"]
+            project_gid = project.gid
 
-            # ---- 2) Sections ----
             section_name_to_gid: dict[str, str] = {}
-            for s in blueprint.get("sections", []):
-                name = s["name"]
-                created = self.sections.create_section_for_project(project_gid, {"name": name})
-                section_name_to_gid[name] = created["gid"]
+            created_sections: list[SectionResult] = []
+            for section_spec in blueprint.get("sections", []):
+                name = section_spec["name"]
+                created_section = self.sections.create_section_for_project(project_gid, {"name": name})
+                created_sections.append(created_section)
+                section_name_to_gid[name] = created_section.gid
 
-            # ---- 3) Tasks ----
-            created_tasks: list[dict] = []
-            for t in blueprint.get("tasks", []):
-                # Build memberships to drop the task in the desired section immediately
+            created_tasks: list[TaskResult] = []
+            for task_spec in blueprint.get("tasks", []):
                 memberships = []
-                section_name = t.get("section_name")
+                section_name = task_spec.get("section_name")
                 if section_name:
                     section_gid = section_name_to_gid.get(section_name)
                     if not section_gid:
                         raise ValueError(f"Section '{section_name}' not found in created sections.")
                     memberships.append({"project": project_gid, "section": section_gid})
                 else:
-                    # At minimum, associate the task with the project
                     memberships.append({"project": project_gid})
 
                 task_payload = {
-                    k: v
-                    for k, v in t.items()
-                    if k
-                       not in {
-                           "section_name",
-                           "subtasks",
-                       }
+                    key: value
+                    for key, value in task_spec.items()
+                    if key not in {"section_name", "subtasks"}
                 }
                 task_payload["memberships"] = memberships
-
-                # Optional: ensure 'projects' set for legacy behavior
                 task_payload.setdefault("projects", [project_gid])
 
                 task = self.tasks.create(task_payload)
                 created_tasks.append(task)
 
-                # ---- 3a) Subtasks ----
-                for st in t.get("subtasks", []):
-                    subtask_payload = {k: v for k, v in st.items()}
-                    # Inherit the project through the parent automatically; no need to set memberships.
-                    self.tasks.create_subtask(task["gid"], subtask_payload)
+                for subtask_spec in task_spec.get("subtasks", []):
+                    subtask_payload = {key: value for key, value in subtask_spec.items()}
+                    self.tasks.create_subtask(task.gid, subtask_payload)
 
-            return {
-                "project": project,
-                "sections": [{"name": k, "gid": v} for k, v in section_name_to_gid.items()],
-                "tasks": created_tasks,
-            }
+            return ProjectResult(project=project, sections=created_sections, tasks=created_tasks)
 
     return ClientWrapper(http)
 
