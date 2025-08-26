@@ -7,6 +7,12 @@ class SectionSpec(BaseModel):
     name: str | None = None
 
 
+class TagSpec(BaseModel):
+    name: str
+    color: str | None = None
+    notes: str | None = None
+
+
 class TaskSpec(BaseModel):
     name: str | None = None
     notes: str | None = None
@@ -70,6 +76,10 @@ class SectionResult(AsanaObject):
 
 
 class TaskResult(AsanaObject):
+    pass
+
+
+class TagResult(AsanaObject):
     pass
 
 
