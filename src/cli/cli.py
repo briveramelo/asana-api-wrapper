@@ -12,54 +12,71 @@ app = typer.Typer(add_completion=False, help="Provision Asana objects from JSON"
 
 
 def _load_json(path: Path):
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    """Load JSON data from a file path."""
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 @app.command("create-project")
-def create_project(file: Path = typer.Option(..., exists=True, readable=True, help="Path to project spec JSON")):
-    raw_spec = _load_json(file)
-    spec = ProjectSpec.model_validate(raw_spec)
-    result = create_project_from_json(spec)
-    proj = result.project
-    typer.echo(f"Created project: {proj.name} (gid={proj.gid})")
-    if result.sections:
-        typer.echo(f"  Sections: {[s.name for s in result.sections]}")
-    if result.tasks:
-        typer.echo(f"  Tasks created: {len(result.tasks)}")
+def create_project(
+    file_path: Path = typer.Option(
+        ..., exists=True, readable=True, help="Path to project spec JSON"
+    ),
+) -> None:
+    """Create an Asana project from a specification file."""
+    spec_data = _load_json(file_path)
+    project_spec = ProjectSpec.model_validate(spec_data)
+    project_result = create_project_from_json(project_spec)
+    project_record = project_result.project
+    typer.echo(f"Created project: {project_record.name} (gid={project_record.gid})")
+    if project_result.sections:
+        typer.echo(f"  Sections: {[section.name for section in project_result.sections]}")
+    if project_result.tasks:
+        typer.echo(f"  Tasks created: {len(project_result.tasks)}")
 
 
 @app.command("add-tasks")
 def add_tasks(
-        project: str = typer.Option(..., "--project", "-p", help="Target project GID"),
-        file: Path = typer.Option(..., exists=True, readable=True, help="Path to tasks JSON list"),
-):
-    raw_tasks = _load_json(file)
-    tasks_spec = [TaskSpec.model_validate(t) for t in raw_tasks]
-    created = create_tasks_in_project(project_gid=project, tasks_spec=tasks_spec)
-    typer.echo(f"Created {len(created)} tasks in project {project}")
+    project_gid: str = typer.Option(
+        ..., "--project", "-p", help="Target project GID"
+    ),
+    file_path: Path = typer.Option(
+        ..., exists=True, readable=True, help="Path to tasks JSON list"
+    ),
+) -> None:
+    """Add tasks to a project using a JSON list."""
+    task_data = _load_json(file_path)
+    task_specs = [TaskSpec.model_validate(task) for task in task_data]
+    created_tasks = create_tasks_in_project(
+        project_gid=project_gid, task_specs=task_specs
+    )
+    typer.echo(f"Created {len(created_tasks)} tasks in project {project_gid}")
 
 
 @app.command("generate-mapping")
 def generate_mapping(
-    out: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
-):
+    output_path: Path = typer.Option("asana_mapping.json", help="Output JSON file path."),
+) -> None:
+    """Generate an identifier mapping and write it to disk."""
     settings = get_settings()
-    mapping = generate_asana_mapping(
+    mapping_result = generate_asana_mapping(
         workspace_gid=settings.workspace_gid,
-        projects=[settings.project_gid]
+        projects=[settings.project_gid],
     )
-    with out.open("w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2, ensure_ascii=False, sort_keys=True)
-    typer.echo(f"Wrote mapping to {out}")
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(mapping_result.model_dump(), file, indent=2, ensure_ascii=False, sort_keys=True)
+    typer.echo(f"Wrote mapping to {output_path}")
 
 
 @app.command("export-openapi")
 def export_openapi(
-    out: Path = typer.Option("llm_tools_openapi.yml", help="Output OpenAPI YAML file."),
-):
-    export_openapi_yaml(out)
-    typer.echo(f"Wrote OpenAPI schema to {out}")
+    output_path: Path = typer.Option(
+        "llm_tools_openapi.yml", help="Output OpenAPI YAML file."
+    ),
+) -> None:
+    """Export the OpenAPI schema to a YAML file."""
+    export_openapi_yaml(output_path)
+    typer.echo(f"Wrote OpenAPI schema to {output_path}")
 
 
 if __name__ == "__main__":

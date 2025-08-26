@@ -134,8 +134,8 @@ def generate_mapping(
             }
     """
 
-    mapping = generate_asana_mapping(
+    mapping_result = generate_asana_mapping(
         workspace_gid=workspace_gid,
         projects=projects,
     )
-    return MappingResult(**mapping)
+    return mapping_result
