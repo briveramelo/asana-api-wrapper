@@ -13,6 +13,7 @@ Provision **Asana projects** and **tasks** from plain JSON. Keep credentials and
     - **Subtasks** (recursive)
     - **Notes**, **due dates**, **assignees**
     - **Followers**, **tags**, **custom fields** (define fields and reference them by name)
+- Create **tags** and attach them to tasks
 - CLI (`provision`) and Python API
 - Simple exponential backoff for Asana **rate limits**
 

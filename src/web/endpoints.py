@@ -4,12 +4,19 @@ from typing import Optional
 
 from fastapi import APIRouter, Body
 
-from src.core.wrapper import create_project_from_json, create_tasks_in_project
+from src.core.wrapper import (
+    add_tags_to_task,
+    create_project_from_json,
+    create_tag as create_tag_in_asana,
+    create_tasks_in_project,
+)
 from src.core.asana_mapping_generator import generate_asana_mapping
 from src.core.models import (
     MappingResult,
     ProjectResult,
     ProjectSpec,
+    TagResult,
+    TagSpec,
     TaskResult,
     TaskSpec,
 )
@@ -78,6 +85,18 @@ def create_tasks(
 
     created = create_tasks_in_project(project_gid, tasks)
     return created
+
+
+@router.post("/tag")
+def create_tag(spec: TagSpec = Body(...)) -> TagResult:
+    """Create a tag in the workspace."""
+    return create_tag_in_asana(spec)
+
+
+@router.post("/task/{task_gid}/tags")
+def add_tags(task_gid: str, tag_gids: list[str] = Body(...)) -> list[TagResult]:
+    """Attach existing tags to a task."""
+    return add_tags_to_task(task_gid, tag_gids)
 
 
 @router.post("/mapping")
