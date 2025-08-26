@@ -1,11 +1,10 @@
 import logging
 from typing import Any
 
-from src.core.asana_client import get_client, with_backoff
+from src.core.asana_client import get_client
 from src.core.config import get_settings
 from src.core.models import (
     ProjectMeta,
-    ProjectRecord,
     ProjectResult,
     ProjectSpec,
     SectionResult,
@@ -19,37 +18,35 @@ from src.core.models import (
 logger = logging.getLogger(__name__)
 
 
-def _create_section(client, project_gid: str, name: str) -> dict | None:
+def _create_section(client, project_gid: str, name: str) -> SectionResult | None:
     """Create a section by name; supports both old/new SDK method names."""
     try:
-        return with_backoff(client.sections.create_section_for_project, project_gid, {"name": name})
+        return client.sections.create_section_for_project(project_gid, {"name": name})
     except AttributeError:
         pass
     try:
-        return with_backoff(client.sections.create_in_project, project_gid, {"name": name})
-    except Exception as e:
-        logger.warning("Could not create section '%s': %s", name, e)
+        return client.sections.create_in_project(project_gid, {"name": name})
+    except Exception as exc:
+        logger.warning("Could not create section '%s': %s", name, exc)
         return None
 
 
-def _list_sections(client, project_gid: str) -> list[dict]:
+def _list_sections(client, project_gid: str) -> list[SectionResult]:
     try:
-        return list(with_backoff(client.sections.get_sections_for_project, project_gid))
+        return list(client.sections.get_sections_for_project(project_gid))
     except AttributeError:
         pass
     try:
-        return list(with_backoff(client.sections.find_by_project, project_gid))
+        return list(client.sections.find_by_project(project_gid))
     except Exception:
         return []
 
 
 def _map_section_names(client, project_gid: str) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    for s in _list_sections(client, project_gid):
-        nm = s.get("name")
-        gid = s.get("gid")
-        if nm and gid:
-            mapping[nm] = gid
+    for section in _list_sections(client, project_gid):
+        if section.name:
+            mapping[section.name] = section.gid
     return mapping
 
 
@@ -60,20 +57,20 @@ def _map_custom_fields(client, project_gid: str) -> tuple[dict[str, str], dict[s
         project_gid, opt_fields="custom_field.name,custom_field.enum_options"
     )
     for setting in field_settings:
-        field = setting.get("custom_field") or {}
-        name = field.get("name")
-        gid = field.get("gid")
-        if name and gid:
-            name_to_gid[name] = gid
+        field_data = setting.get("custom_field") or {}
+        field_name = field_data.get("name")
+        field_gid = field_data.get("gid")
+        if field_name and field_gid:
+            name_to_gid[field_name] = field_gid
             options_map: dict[str, str] = {}
-            for option in field.get("enum_options") or []:
+            for option in field_data.get("enum_options") or []:
                 option_name = option.get("name")
                 option_gid = option.get("gid")
                 if option_name and option_gid:
                     options_map[option_name] = option_gid
             if options_map:
-                option_map[name] = options_map
-                option_map[gid] = options_map
+                option_map[field_name] = options_map
+                option_map[field_gid] = options_map
     return name_to_gid, option_map
 
 
@@ -95,63 +92,61 @@ def _translate_custom_fields(
 
 def _collect_tag_specs(tasks: list[TaskSpec]) -> dict[str, TagSpec]:
     tag_map: dict[str, TagSpec] = {}
-    for task in tasks:
-        for tag in task.tags or []:
+    for task_spec in tasks:
+        for tag in task_spec.tags or []:
             if tag.name not in tag_map:
                 tag_map[tag.name] = tag
-        if task.subtasks:
-            tag_map.update(_collect_tag_specs(task.subtasks))
+        if task_spec.subtasks:
+            tag_map.update(_collect_tag_specs(task_spec.subtasks))
     return tag_map
 
 
 def _create_tags(client, tag_map: dict[str, TagSpec]) -> dict[str, str]:
     settings = get_settings()
     name_to_gid: dict[str, str] = {}
-    for tag in tag_map.values():
-        payload: dict[str, Any] = {"name": tag.name, "workspace": settings.workspace_gid}
-        if tag.color:
-            payload["color"] = tag.color
-        if tag.notes:
-            payload["notes"] = tag.notes
-        created = with_backoff(client.tags.create, payload)
-        name_to_gid[tag.name] = created["gid"]
+    for tag_spec in tag_map.values():
+        payload: dict[str, Any] = {"name": tag_spec.name, "workspace": settings.workspace_gid}
+        if tag_spec.color:
+            payload["color"] = tag_spec.color
+        if tag_spec.notes:
+            payload["notes"] = tag_spec.notes
+        created_tag = client.tags.create(payload)
+        name_to_gid[tag_spec.name] = created_tag.gid
     return name_to_gid
 
 
 def _build_task_payload(
     project_gid: str,
-    t: TaskSpec,
+    task_spec: TaskSpec,
     section_name_to_gid: dict[str, str],
     custom_field_name_to_gid: dict[str, str],
     custom_field_option_map: dict[str, dict[str, str]],
     tag_name_to_gid: dict[str, str],
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "name": t.name,
+        "name": task_spec.name,
         "projects": [project_gid],
     }
-    # Optional simple fields
     for key in ("notes", "assignee", "due_on", "due_at"):
-        value = getattr(t, key)
+        value = getattr(task_spec, key)
         if value is not None:
             payload[key] = value
 
-    if t.followers is not None:
-        payload["followers"] = t.followers
-    if t.tags is not None:
-        payload["tags"] = [tag_name_to_gid[tag.name] for tag in t.tags]
-    if t.custom_fields is not None:
+    if task_spec.followers is not None:
+        payload["followers"] = task_spec.followers
+    if task_spec.tags is not None:
+        payload["tags"] = [tag_name_to_gid[tag.name] for tag in task_spec.tags]
+    if task_spec.custom_fields is not None:
         payload["custom_fields"] = _translate_custom_fields(
-            t.custom_fields,
+            task_spec.custom_fields,
             custom_field_name_to_gid,
             custom_field_option_map,
         )
 
-    # Section placement (prefer explicit GID; else name lookup)
     memberships = []
-    section_gid = t.section
-    if not section_gid and t.section_name:
-        section_gid = section_name_to_gid.get(t.section_name)
+    section_gid = task_spec.section
+    if not section_gid and task_spec.section_name:
+        section_gid = section_name_to_gid.get(task_spec.section_name)
     if section_gid:
         memberships.append({"project": project_gid, "section": section_gid})
     if memberships:
@@ -164,79 +159,73 @@ def _create_subtasks_recursive(
     client,
     parent_task_gid: str,
     project_gid: str,
-    subtasks: list[TaskSpec],
+    subtask_specs: list[TaskSpec],
     custom_field_name_to_gid: dict[str, str],
     custom_field_option_map: dict[str, dict[str, str]],
     tag_name_to_gid: dict[str, str],
 ) -> None:
-    for st in subtasks:
-        sub_payload = {"name": st.name, "parent": parent_task_gid}
-        # Optional attributes for subtasks
+    for subtask_spec in subtask_specs:
+        sub_payload = {"name": subtask_spec.name, "parent": parent_task_gid}
         for key in ("notes", "assignee", "due_on", "due_at"):
-            value = getattr(st, key)
+            value = getattr(subtask_spec, key)
             if value is not None:
                 sub_payload[key] = value
-        if st.followers is not None:
-            sub_payload["followers"] = st.followers
-        if st.tags is not None:
-            sub_payload["tags"] = [tag_name_to_gid[tag.name] for tag in st.tags]
-        if st.custom_fields is not None:
+        if subtask_spec.followers is not None:
+            sub_payload["followers"] = subtask_spec.followers
+        if subtask_spec.tags is not None:
+            sub_payload["tags"] = [tag_name_to_gid[tag.name] for tag in subtask_spec.tags]
+        if subtask_spec.custom_fields is not None:
             sub_payload["custom_fields"] = _translate_custom_fields(
-                st.custom_fields,
+                subtask_spec.custom_fields,
                 custom_field_name_to_gid,
                 custom_field_option_map,
             )
-        # Optional: include project membership for visibility
-        if st.inherit_project_membership:
+        if subtask_spec.inherit_project_membership:
             sub_payload["projects"] = [project_gid]
-        created = with_backoff(client.tasks.create, sub_payload)
-        if st.subtasks:
+        created_task = client.tasks.create(sub_payload)
+        if subtask_spec.subtasks:
             _create_subtasks_recursive(
                 client,
-                created["gid"],
+                created_task.gid,
                 project_gid,
-                st.subtasks,
+                subtask_spec.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
                 tag_name_to_gid,
             )
 
 
-def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
+def create_project_from_json(project_spec: ProjectSpec) -> ProjectResult:
     """Create a project and return structured metadata."""
     client = get_client()
     settings = get_settings()
 
-    project_meta = spec.project or ProjectMeta()
-    p_payload = {
+    project_meta = project_spec.project or ProjectMeta()
+    project_payload = {
         "name": project_meta.name or "Untitled Project",
         "workspace": settings.workspace_gid,
         "team": settings.team_gid,
     }
     if project_meta.notes:
-        p_payload["notes"] = project_meta.notes
+        project_payload["notes"] = project_meta.notes
     if project_meta.privacy:
-        p_payload["privacy_setting"] = project_meta.privacy
+        project_payload["privacy_setting"] = project_meta.privacy
 
-    project = with_backoff(client.projects.create, p_payload)
+    project = client.projects.create(project_payload)
 
     created_sections: list[SectionResult] = []
     section_name_to_gid: dict[str, str] = {}
 
-    # Create sections if provided
-    for s in spec.sections or []:
-        sec = _create_section(client, project["gid"], s.name or "Section")
-        if sec:
-            sec_model = SectionResult.model_validate(sec)
-            created_sections.append(sec_model)
-            if sec_model.name:
-                section_name_to_gid[sec_model.name] = sec_model.gid
+    for section_spec in project_spec.sections or []:
+        section = _create_section(client, project.gid, section_spec.name or "Section")
+        if section:
+            created_sections.append(section)
+            if section.name:
+                section_name_to_gid[section.name] = section.gid
 
-    # Also map any preexisting sections (covers cases where project template has them)
-    section_name_to_gid.update(_map_section_names(client, project["gid"]))
+    section_name_to_gid.update(_map_section_names(client, project.gid))
 
-    # Create custom fields and attach to project
-    for field_spec in spec.custom_fields or []:
+    for field_spec in project_spec.custom_fields or []:
         field_payload: dict[str, Any] = {
             "name": field_spec.name,
             "resource_subtype": field_spec.resource_subtype,
@@ -249,98 +238,87 @@ def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
                 {"name": option.name, **({"color": option.color} if option.color else {})}
                 for option in field_spec.options
             ]
-        created_field = with_backoff(client.custom_fields.create, field_payload)
-        with_backoff(
-            client.custom_field_settings.add_to_project,
-            project["gid"],
-            created_field["gid"],
-        )
+        created_field = client.custom_fields.create(field_payload)
+        client.custom_field_settings.add_to_project(project.gid, created_field["gid"])
 
-    custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project["gid"])
+    custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project.gid)
 
-    tag_name_to_gid = _create_tags(client, _collect_tag_specs(spec.tasks or []))
+    tag_name_to_gid = _create_tags(client, _collect_tag_specs(project_spec.tasks or []))
 
     created_tasks: list[TaskResult] = []
-    # Create tasks
-    for t in spec.tasks or []:
-        if not t.name:
-            logger.warning("Skipping task with no name: %s", t)
+    for task_spec in project_spec.tasks or []:
+        if not task_spec.name:
+            logger.warning("Skipping task with no name: %s", task_spec)
             continue
         payload = _build_task_payload(
-            project["gid"],
-            t,
+            project.gid,
+            task_spec,
             section_name_to_gid,
             custom_field_name_to_gid,
             custom_field_option_map,
             tag_name_to_gid,
         )
-        created = with_backoff(client.tasks.create, payload)
-        task_model = TaskResult.model_validate(created)
-        created_tasks.append(task_model)
-        # Subtasks
-        if t.subtasks:
+        created_task = client.tasks.create(payload)
+        created_tasks.append(created_task)
+        if task_spec.subtasks:
             _create_subtasks_recursive(
                 client,
-                task_model.gid,
-                project["gid"],
-                t.subtasks,
+                created_task.gid,
+                project.gid,
+                task_spec.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
                 tag_name_to_gid,
             )
 
-    project_model = ProjectRecord.model_validate(project)
-    return ProjectResult(project=project_model, sections=created_sections, tasks=created_tasks)
+    return ProjectResult(project=project, sections=created_sections, tasks=created_tasks)
 
 
-def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> list[TaskResult]:
+def create_tasks_in_project(project_gid: str, task_specs: list[TaskSpec]) -> list[TaskResult]:
     """Add tasks to an existing project from a list of TaskSpec models."""
     client = get_client()
-    # Map section names if caller uses section_name
     section_name_to_gid = _map_section_names(client, project_gid)
     custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project_gid)
-    tag_name_to_gid = _create_tags(client, _collect_tag_specs(tasks_spec))
+    tag_name_to_gid = _create_tags(client, _collect_tag_specs(task_specs))
 
-    created: list[TaskResult] = []
-    for t in tasks_spec:
-        if not t.name:
-            logger.warning("Skipping task with no name: %s", t)
+    created_tasks: list[TaskResult] = []
+    for task_spec in task_specs:
+        if not task_spec.name:
+            logger.warning("Skipping task with no name: %s", task_spec)
             continue
         payload = _build_task_payload(
             project_gid,
-            t,
+            task_spec,
             section_name_to_gid,
             custom_field_name_to_gid,
             custom_field_option_map,
             tag_name_to_gid,
         )
-        task = with_backoff(client.tasks.create, payload)
-        task_model = TaskResult.model_validate(task)
-        created.append(task_model)
-        if t.subtasks:
+        created_task = client.tasks.create(payload)
+        created_tasks.append(created_task)
+        if task_spec.subtasks:
             _create_subtasks_recursive(
                 client,
-                task_model.gid,
+                created_task.gid,
                 project_gid,
-                t.subtasks,
+                task_spec.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
                 tag_name_to_gid,
             )
-    return created
+    return created_tasks
 
 
-def create_tag(spec: TagSpec) -> TagResult:
+def create_tag(tag_spec: TagSpec) -> TagResult:
     """Create a tag in the configured workspace."""
     client = get_client()
     settings = get_settings()
-    payload: dict[str, Any] = {"name": spec.name, "workspace": settings.workspace_gid}
-    if spec.color:
-        payload["color"] = spec.color
-    if spec.notes:
-        payload["notes"] = spec.notes
-    tag = with_backoff(client.tags.create, payload)
-    return TagResult.model_validate(tag)
+    payload: dict[str, Any] = {"name": tag_spec.name, "workspace": settings.workspace_gid}
+    if tag_spec.color:
+        payload["color"] = tag_spec.color
+    if tag_spec.notes:
+        payload["notes"] = tag_spec.notes
+    return client.tags.create(payload)
 
 
 def add_tags_to_task(task_gid: str, tag_gids: list[str]) -> list[TagResult]:
@@ -348,7 +326,7 @@ def add_tags_to_task(task_gid: str, tag_gids: list[str]) -> list[TagResult]:
     client = get_client()
     results: list[TagResult] = []
     for tag_gid in tag_gids:
-        tag = with_backoff(client.tasks.add_tag, task_gid, tag_gid)
-        results.append(TagResult.model_validate(tag))
+        tag = client.tasks.add_tag(task_gid, tag_gid)
+        results.append(tag)
     return results
 

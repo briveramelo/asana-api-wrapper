@@ -93,10 +93,16 @@ class ProjectResult(BaseModel):
     tasks: list[TaskResult] = []
 
 
+class CustomFieldInfo(BaseModel):
+    field_gid: str
+    resource_subtype: str
+    options: dict[str, str] | None = None
+
+
 class MappingResult(BaseModel):
     projects: dict[str, str]
     sections: dict[str, dict[str, str]]
-    custom_fields: dict[str, dict[str, Any]]
+    custom_fields: dict[str, dict[str, CustomFieldInfo]]
     tags: dict[str, str]
     users: dict[str, str]
 

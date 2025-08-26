@@ -216,7 +216,8 @@ components:
           title: Sections
         custom_fields:
           additionalProperties:
-            additionalProperties: true
+            additionalProperties:
+              $ref: '#/components/schemas/CustomFieldInfo'
             type: object
           type: object
           title: Custom Fields
@@ -238,6 +239,26 @@ components:
       - tags
       - users
       title: MappingResult
+    CustomFieldInfo:
+      properties:
+        field_gid:
+          type: string
+          title: Field Gid
+        resource_subtype:
+          type: string
+          title: Resource Subtype
+        options:
+          anyOf:
+          - type: object
+            additionalProperties:
+              type: string
+          - type: 'null'
+          title: Options
+      type: object
+      required:
+      - field_gid
+      - resource_subtype
+      title: CustomFieldInfo
     ProjectMeta:
       properties:
         name:
