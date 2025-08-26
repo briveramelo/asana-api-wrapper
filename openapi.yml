@@ -128,6 +128,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /tag:
+    post:
+      summary: Create Tag
+      description: Create a tag in the configured workspace.
+      operationId: create_tag_tag_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagSpec'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /task/{task_gid}/tags:
+    post:
+      summary: Add Tags
+      description: Attach existing tags to a task.
+      operationId: add_tags_task__task_gid__tags_post
+      parameters:
+      - name: task_gid
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Task Gid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+              title: Tag Gids
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TagResult'
+                title: Response Add Tags Task  Task Gid  Tags Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     HTTPValidationError:
@@ -282,6 +343,40 @@ components:
           title: Name
       type: object
       title: SectionSpec
+    TagResult:
+      properties:
+        gid:
+          type: string
+          title: Gid
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+      additionalProperties: true
+      type: object
+      required:
+      - gid
+      title: TagResult
+    TagSpec:
+      properties:
+        name:
+          type: string
+          title: Name
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      type: object
+      required:
+      - name
+      title: TagSpec
     TaskResult:
       properties:
         gid:

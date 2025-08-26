@@ -59,6 +59,11 @@ def get_client() -> any:
             path = f"/workspaces/{workspace_gid}/tags"
             return self._http.request_paginated("GET", path)
 
+        def create(self, payload: dict) -> dict:
+            # POST /tags
+            body = _wrap_data(payload)
+            return with_backoff(self._http.request, "POST", "/tags", json=body)
+
     class ProjectsProxy:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
@@ -110,6 +115,12 @@ def get_client() -> any:
         def create_subtask(self, parent_task_gid: str, payload: dict) -> dict:
             body = _wrap_data(payload)
             path = f"/tasks/{parent_task_gid}/subtasks"
+            return with_backoff(self._http.request, "POST", path, json=body)
+
+        def add_tag(self, task_gid: str, tag_gid: str) -> dict:
+            # POST /tasks/{task_gid}/addTag
+            body = _wrap_data({"tag": tag_gid})
+            path = f"/tasks/{task_gid}/addTag"
             return with_backoff(self._http.request, "POST", path, json=body)
 
     class CustomFieldSettingsProxy:

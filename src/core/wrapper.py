@@ -9,6 +9,8 @@ from src.core.models import (
     ProjectResult,
     ProjectSpec,
     SectionResult,
+    TagResult,
+    TagSpec,
     TaskResult,
     TaskSpec,
 )
@@ -291,4 +293,27 @@ def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> lis
                 custom_field_option_map,
             )
     return created
+
+
+def create_tag(spec: TagSpec) -> TagResult:
+    """Create a tag in the configured workspace."""
+    client = get_client()
+    settings = get_settings()
+    payload: dict[str, Any] = {"name": spec.name, "workspace": settings.workspace_gid}
+    if spec.color:
+        payload["color"] = spec.color
+    if spec.notes:
+        payload["notes"] = spec.notes
+    tag = with_backoff(client.tags.create, payload)
+    return TagResult.model_validate(tag)
+
+
+def add_tags_to_task(task_gid: str, tag_gids: list[str]) -> list[TagResult]:
+    """Attach existing tags to a task."""
+    client = get_client()
+    results: list[TagResult] = []
+    for tag_gid in tag_gids:
+        tag = with_backoff(client.tasks.add_tag, task_gid, tag_gid)
+        results.append(TagResult.model_validate(tag))
+    return results
 
