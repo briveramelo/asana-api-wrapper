@@ -13,3 +13,5 @@
 
 - don't run tests as web connectivity is disabled for you
 - if you see repeat patterns or repeat code, consolidate into a helper function
+- all functions (internal and public) should include a brief docstring explain the purpose
+- all comments should explain the purpose of a section or the reason for a choice
