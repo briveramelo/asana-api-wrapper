@@ -11,7 +11,7 @@ paths:
         \ create. Schema::\n\n        {\n          \"project\": {\"name\": \"My Project\"\
         , ...},\n          \"sections\": [{\"name\": \"Section\"}, ...],\n       \
         \   \"tasks\": [TaskSpec, ...]\n        }\n\n    ``TaskSpec`` includes keys\
-        \ like \"name\", \"notes\", \"assignee\", \"due_on\",\n    \"section\"/\"\
+        \ like \"name\", \"notes\", \"assignee\", \"due_on\", \"tags\",\n    \"section\"/\"\
         section_name\", and optional ``subtasks`` which is a list of\n    ``TaskSpec``.\n\
         \nReturns\n-------\nProjectResult\n    ``{\"project\": {...}, \"sections\"\
         : [...], \"tasks\": [...]}``"
@@ -43,7 +43,7 @@ paths:
         \    JSON array describing tasks to create. Each ``TaskSpec`` has the schema::\n\
         \n        {\n          \"name\": \"Task name\",\n          \"notes\": \"Optional\
         \ description\",\n          \"assignee\": \"user_gid\",\n          \"due_on\"\
-        : \"YYYY-MM-DD\",\n          \"section\": \"section_gid\" | null,\n      \
+        : \"YYYY-MM-DD\",\n          \"tags\": [TagSpec, ...],\n          \"section\": \"section_gid\" | null,\n      \
         \    \"section_name\": \"Section\",\n          \"subtasks\": [TaskSpec, ...]\n\
         \        }\n\nReturns\n-------\nlist[TaskResult]\n    List of task objects\
         \ returned by the Asana API."
@@ -429,7 +429,7 @@ components:
         tags:
           anyOf:
           - items:
-              type: string
+              $ref: '#/components/schemas/TagSpec'
             type: array
           - type: 'null'
           title: Tags

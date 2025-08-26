@@ -40,7 +40,7 @@ def create_project(spec: ProjectSpec = Body(...)) -> ProjectResult:
             }
 
         ``TaskSpec`` includes keys like "name", "notes", "assignee", "due_on",
-        "section"/"section_name", and optional ``subtasks`` which is a list of
+        "tags", "section"/"section_name", and optional ``subtasks`` which is a list of
         ``TaskSpec``.
 
     Returns
@@ -72,6 +72,7 @@ def create_tasks(
               "notes": "Optional description",
               "assignee": "user_gid",
               "due_on": "YYYY-MM-DD",
+              "tags": [TagSpec, ...],
               "section": "section_gid" | null,
               "section_name": "Section",
               "subtasks": [TaskSpec, ...]

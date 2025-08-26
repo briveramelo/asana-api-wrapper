@@ -61,7 +61,10 @@
       "assignee": "gid",
       "due_on": "2025-09-01",
       "followers": ["gid", "gid"],
-      "tags": ["gid"],
+      "tags": [
+        { "name": "Urgent", "color": "red" },
+        { "name": "Meeting" }
+      ],
       "custom_fields": {
         "Urgency": "gid",
         "Effort": "gid",
@@ -77,6 +80,10 @@
     {
       "name": "Design Assets",
       "notes": "Hero image + variants",
+      "tags": [
+        { "name": "Design" },
+        { "name": "Urgent", "color": "red" }
+      ],
       "custom_fields": {
         "Urgency": "gid",
         "Effort": "gid",
