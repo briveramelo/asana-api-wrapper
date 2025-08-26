@@ -112,7 +112,7 @@ def generate_mapping(
     workspace_gid : str, optional
         Workspace to index. Defaults to ``settings.workspace_gid`` if omitted.
     projects : list[str], optional
-        Optional list of project names to include; defaults to all projects in the
+        list of project names to include; defaults to all projects in the
         workspace.
 
     Returns

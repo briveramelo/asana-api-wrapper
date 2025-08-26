@@ -13,18 +13,18 @@ import logging
 
 from src.core.asana_client import get_client
 from src.core.config import get_settings
-from src.core.models import CustomFieldInfo, MappingResult
+from src.core.models import CustomFieldInfo, MappingResult, ProjectRecord
 
 logger = logging.getLogger("asana-mapper")
 logging.basicConfig(level=logging.INFO)
 
-def _index_by_name_thin(items: list[dict]) -> dict[str, str]:
+def _index_by_name_thin(items: list[ProjectRecord]) -> dict[str, str]:
     """Build a mapping from item name to its GID, logging duplicate names."""
     mapping: dict[str, str] = {}
     duplicate_counts: dict[str, int] = {}
     for item in items:
-        name = (item.get("name") or "").strip()
-        gid = item.get("gid")
+        name = (item.name or "").strip()
+        gid = item.gid
         if not name or not gid:
             continue
         if name in mapping:
@@ -82,7 +82,7 @@ def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, Cu
     return fields_by_name
 
 def _collect_users(client, workspace_gid: str) -> dict[str, str]:
-    """Return a mapping of user name to GID for the workspace."""
+    """Return a mapping of username to GID for the workspace."""
     user_items = client.users.list_for_workspace(workspace_gid)
     return _index_by_name_thin(user_items)
 
