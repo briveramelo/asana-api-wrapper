@@ -10,95 +10,92 @@ Example:
 """
 
 import logging
-from typing import Any
 
 from src.core.asana_client import get_client
 from src.core.config import get_settings
+from src.core.models import CustomFieldInfo, MappingResult
 
 logger = logging.getLogger("asana-mapper")
 logging.basicConfig(level=logging.INFO)
 
 def _index_by_name_thin(items: list[dict]) -> dict[str, str]:
-    """
-    Build a {name: gid} map. If duplicates exist, we keep the first and log a warning.
-    """
-    out: dict[str, str] = {}
-    seen: dict[str, int] = {}
-    for it in items:
-        name = (it.get("name") or "").strip()
-        gid = it.get("gid")
+    """Build a mapping from item name to its GID, logging duplicate names."""
+    mapping: dict[str, str] = {}
+    duplicate_counts: dict[str, int] = {}
+    for item in items:
+        name = (item.get("name") or "").strip()
+        gid = item.get("gid")
         if not name or not gid:
             continue
-        if name in out:
-            seen[name] = seen.get(name, 1) + 1
-            if seen[name] == 2:
+        if name in mapping:
+            duplicate_counts[name] = duplicate_counts.get(name, 1) + 1
+            if duplicate_counts[name] == 2:
                 logger.warning("Duplicate name encountered; keeping first mapping for: %r", name)
             continue
-        out[name] = gid
-    return out
+        mapping[name] = gid
+    return mapping
 
 def _collect_sections(client, project_gid: str) -> dict[str, str]:
-    sections = client.sections.list_for_project(project_gid)
-    return _index_by_name_thin(sections)
+    """Return a mapping of section name to GID for the given project."""
+    section_items = client.sections.list_for_project(project_gid)
+    return _index_by_name_thin(section_items)
 
-def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, Any]:
-    """
-    Returns:
-    {
-      "Importance": {
-        "field_gid": "...",
-        "resource_subtype": "enum",
-        "options": {"High": "...", "Medium": "...", "Low": "..."}
-      },
-      ...
-    }
-    """
-    # Ask for nested field details up front; if not all details are present, fall back to /custom_fields/{gid}
-    opt = "custom_field.name,custom_field.resource_subtype,custom_field.enum_options.name,custom_field.enum_options.gid"
-    settings = client.custom_field_settings.list_for_project(project_gid, opt_fields=opt)
+def _collect_custom_fields_for_project(client, project_gid: str) -> dict[str, CustomFieldInfo]:
+    """Gather custom field metadata for a project keyed by field name."""
+    option_fields = (
+        "custom_field.name,custom_field.resource_subtype,"
+        "custom_field.enum_options.name,custom_field.enum_options.gid"
+    )
+    field_settings = client.custom_field_settings.list_for_project(
+        project_gid, opt_fields=option_fields
+    )
 
-    by_name: dict[str, Any] = {}
-    for s in settings:
-        cf = s.get("custom_field") or {}
-        name = (cf.get("name") or "").strip()
-        if not name:
+    fields_by_name: dict[str, CustomFieldInfo] = {}
+    for setting in field_settings:
+        field_data = setting.get("custom_field") or {}
+        field_name = (field_data.get("name") or "").strip()
+        if not field_name:
             continue
-        field_gid = cf.get("gid")
-        resource_subtype = cf.get("resource_subtype")
-        options_map: dict[str, str] = {}
+        field_gid = field_data.get("gid")
+        resource_subtype = field_data.get("resource_subtype")
+        option_map: dict[str, str] = {}
 
-        # Prefer enum options from the expanded response if present
-        enum_opts = cf.get("enum_options") or []
-        if not enum_opts and resource_subtype in ("enum", "multi_enum"):
-            # Fallback: fetch the field to get options
-            cf_full = client.custom_fields.get(field_gid, opt_fields="name,resource_subtype,enum_options.name,enum_options.gid")
-            enum_opts = (cf_full or {}).get("enum_options") or []
+        enum_options = field_data.get("enum_options") or []
+        if not enum_options and resource_subtype in ("enum", "multi_enum"):
+            field_details = client.custom_fields.get(
+                field_gid,
+                opt_fields="name,resource_subtype,enum_options.name,enum_options.gid",
+            )
+            enum_options = (field_details or {}).get("enum_options") or []
 
-        for opt in enum_opts:
-            oname = (opt.get("name") or "").strip()
-            ogid = opt.get("gid")
-            if oname and ogid:
-                options_map[oname] = ogid
+        for option in enum_options:
+            option_name = (option.get("name") or "").strip()
+            option_gid = option.get("gid")
+            if option_name and option_gid:
+                option_map[option_name] = option_gid
 
-        by_name[name] = {
-            "field_gid": field_gid,
-            "resource_subtype": resource_subtype,
-            "options": options_map or None
-        }
-    return by_name
+        fields_by_name[field_name] = CustomFieldInfo(
+            field_gid=field_gid,
+            resource_subtype=resource_subtype,
+            options=option_map or None,
+        )
+    return fields_by_name
 
 def _collect_users(client, workspace_gid: str) -> dict[str, str]:
-    users = client.users.list_for_workspace(workspace_gid)
-    return _index_by_name_thin(users)
+    """Return a mapping of user name to GID for the workspace."""
+    user_items = client.users.list_for_workspace(workspace_gid)
+    return _index_by_name_thin(user_items)
 
 def _collect_tags(client, workspace_gid: str) -> dict[str, str]:
-    tags = client.tags.list_for_workspace(workspace_gid)
-    return _index_by_name_thin(tags)
+    """Return a mapping of tag name to GID for the workspace."""
+    tag_items = client.tags.list_for_workspace(workspace_gid)
+    return _index_by_name_thin(tag_items)
 
 def generate_asana_mapping(
     workspace_gid: str | None = None,
     projects: list[str] | None = None,
-) -> dict[str, Any]:
+) -> MappingResult:
+    """Generate a lightweight mapping of Asana identifiers."""
     client = get_client()
     settings = get_settings()
 
@@ -106,38 +103,43 @@ def generate_asana_mapping(
     if not workspace_gid:
         raise SystemExit("You must pass --workspace-gid or set settings.default_workspace_gid")
 
-    # Fetch all projects in workspace (name + gid)
     all_projects = client.projects.list_for_workspace(workspace_gid, opt_fields="name")
     projects_by_name = _index_by_name_thin(all_projects)
 
-    # Decide which projects to include
     if projects and len(projects) > 1 and projects[0]:
-        missing = [p for p in projects if p not in projects_by_name]
+        missing = [name for name in projects if name not in projects_by_name]
         if missing:
-            logger.warning("These project names were not found in workspace %s: %s", workspace_gid, missing)
-        chosen = {p: projects_by_name[p] for p in projects if p in projects_by_name}
+            logger.warning(
+                "These project names were not found in workspace %s: %s",
+                workspace_gid,
+                missing,
+            )
+        selected_projects = {
+            name: projects_by_name[name] for name in projects if name in projects_by_name
+        }
     else:
-        chosen = projects_by_name
+        selected_projects = projects_by_name
 
-    # Build the mapping
-    mapping: dict[str, Any] = {
-        "projects": chosen,               # {project_name: gid}
-        "sections": {},                   # {project_name: {section_name: gid}}
-        "custom_fields": {},              # {project_name: {field_name: {...}}}
-        "tags": _collect_tags(client, workspace_gid),   # {tag_name: gid}
-        "users": _collect_users(client, workspace_gid), # {user_name: gid}
-    }
+    mapping_result = MappingResult(
+        projects=selected_projects,
+        sections={},
+        custom_fields={},
+        tags=_collect_tags(client, workspace_gid),
+        users=_collect_users(client, workspace_gid),
+    )
 
-    for proj_name, proj_gid in chosen.items():
-        mapping["sections"][proj_name] = _collect_sections(client, proj_gid)
-        mapping["custom_fields"][proj_name] = _collect_custom_fields_for_project(client, proj_gid)
+    for project_name, project_gid in selected_projects.items():
+        mapping_result.sections[project_name] = _collect_sections(client, project_gid)
+        mapping_result.custom_fields[project_name] = _collect_custom_fields_for_project(
+            client, project_gid
+        )
 
     logger.info(
         "Generated mapping with projects=%d, users=%d, tags=%d",
-        len(chosen),
-        len(mapping["users"]),
-        len(mapping["tags"]),
+        len(selected_projects),
+        len(mapping_result.users),
+        len(mapping_result.tags),
     )
 
-    return mapping
+    return mapping_result
 
