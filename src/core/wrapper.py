@@ -93,12 +93,38 @@ def _translate_custom_fields(
     return translated
 
 
+def _collect_tag_specs(tasks: list[TaskSpec]) -> dict[str, TagSpec]:
+    tag_map: dict[str, TagSpec] = {}
+    for task in tasks:
+        for tag in task.tags or []:
+            if tag.name not in tag_map:
+                tag_map[tag.name] = tag
+        if task.subtasks:
+            tag_map.update(_collect_tag_specs(task.subtasks))
+    return tag_map
+
+
+def _create_tags(client, tag_map: dict[str, TagSpec]) -> dict[str, str]:
+    settings = get_settings()
+    name_to_gid: dict[str, str] = {}
+    for tag in tag_map.values():
+        payload: dict[str, Any] = {"name": tag.name, "workspace": settings.workspace_gid}
+        if tag.color:
+            payload["color"] = tag.color
+        if tag.notes:
+            payload["notes"] = tag.notes
+        created = with_backoff(client.tags.create, payload)
+        name_to_gid[tag.name] = created["gid"]
+    return name_to_gid
+
+
 def _build_task_payload(
     project_gid: str,
     t: TaskSpec,
     section_name_to_gid: dict[str, str],
     custom_field_name_to_gid: dict[str, str],
     custom_field_option_map: dict[str, dict[str, str]],
+    tag_name_to_gid: dict[str, str],
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "name": t.name,
@@ -113,7 +139,7 @@ def _build_task_payload(
     if t.followers is not None:
         payload["followers"] = t.followers
     if t.tags is not None:
-        payload["tags"] = t.tags
+        payload["tags"] = [tag_name_to_gid[tag.name] for tag in t.tags]
     if t.custom_fields is not None:
         payload["custom_fields"] = _translate_custom_fields(
             t.custom_fields,
@@ -141,6 +167,7 @@ def _create_subtasks_recursive(
     subtasks: list[TaskSpec],
     custom_field_name_to_gid: dict[str, str],
     custom_field_option_map: dict[str, dict[str, str]],
+    tag_name_to_gid: dict[str, str],
 ) -> None:
     for st in subtasks:
         sub_payload = {"name": st.name, "parent": parent_task_gid}
@@ -152,7 +179,7 @@ def _create_subtasks_recursive(
         if st.followers is not None:
             sub_payload["followers"] = st.followers
         if st.tags is not None:
-            sub_payload["tags"] = st.tags
+            sub_payload["tags"] = [tag_name_to_gid[tag.name] for tag in st.tags]
         if st.custom_fields is not None:
             sub_payload["custom_fields"] = _translate_custom_fields(
                 st.custom_fields,
@@ -171,6 +198,7 @@ def _create_subtasks_recursive(
                 st.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
+                tag_name_to_gid,
             )
 
 
@@ -230,6 +258,8 @@ def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
 
     custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project["gid"])
 
+    tag_name_to_gid = _create_tags(client, _collect_tag_specs(spec.tasks or []))
+
     created_tasks: list[TaskResult] = []
     # Create tasks
     for t in spec.tasks or []:
@@ -242,6 +272,7 @@ def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
             section_name_to_gid,
             custom_field_name_to_gid,
             custom_field_option_map,
+            tag_name_to_gid,
         )
         created = with_backoff(client.tasks.create, payload)
         task_model = TaskResult.model_validate(created)
@@ -255,6 +286,7 @@ def create_project_from_json(spec: ProjectSpec) -> ProjectResult:
                 t.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
+                tag_name_to_gid,
             )
 
     project_model = ProjectRecord.model_validate(project)
@@ -267,6 +299,7 @@ def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> lis
     # Map section names if caller uses section_name
     section_name_to_gid = _map_section_names(client, project_gid)
     custom_field_name_to_gid, custom_field_option_map = _map_custom_fields(client, project_gid)
+    tag_name_to_gid = _create_tags(client, _collect_tag_specs(tasks_spec))
 
     created: list[TaskResult] = []
     for t in tasks_spec:
@@ -279,6 +312,7 @@ def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> lis
             section_name_to_gid,
             custom_field_name_to_gid,
             custom_field_option_map,
+            tag_name_to_gid,
         )
         task = with_backoff(client.tasks.create, payload)
         task_model = TaskResult.model_validate(task)
@@ -291,6 +325,7 @@ def create_tasks_in_project(project_gid: str, tasks_spec: list[TaskSpec]) -> lis
                 t.subtasks,
                 custom_field_name_to_gid,
                 custom_field_option_map,
+                tag_name_to_gid,
             )
     return created
 
