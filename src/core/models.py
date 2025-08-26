@@ -20,7 +20,7 @@ class TaskSpec(BaseModel):
     due_on: str | None = None  # YYYY-MM-DD
     due_at: str | None = None  # RFC3339 timestamp
     followers: list[str] | None = None
-    tags: list[TagSpec] | None = None
+    tags: list[str] | None = None
     custom_fields: dict[str, Any] | None = None
     section: str | None = None  # section GID
     section_name: str | None = None  # fallback by name (best-effort)
@@ -50,6 +50,7 @@ class ProjectSpec(BaseModel):
     project: ProjectMeta | None = None
     sections: list[SectionSpec] | None = None
     custom_fields: list[CustomFieldSpec] | None = None
+    tags: list[TagSpec] | None = None
     tasks: list[TaskSpec] | None = None
 
 

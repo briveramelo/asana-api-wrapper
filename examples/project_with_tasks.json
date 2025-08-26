@@ -54,6 +54,10 @@
       ]
     }
   ],
+  "tags": [
+    { "name": "Meeting" },
+    { "name": "Design" }
+  ],
   "tasks": [
     {
       "name": "Kickoff Meeting",
@@ -61,17 +65,14 @@
       "assignee": "gid",
       "due_on": "2025-09-01",
       "followers": ["gid", "gid"],
-      "tags": [
-        { "name": "Urgent", "color": "red" },
-        { "name": "Meeting" }
-      ],
+      "tags": ["Meeting"],
       "custom_fields": {
-        "Urgency": "gid",
-        "Effort": "gid",
-        "Workstream": "gid",
-        "Importance": "gid"
+        "Urgency": "High",
+        "Effort": "5",
+        "Workstream": "Engineering",
+        "Importance": "High"
       },
-      "section_name": "gid",
+      "section_name": "Backlog",
       "subtasks": [
         { "name": "Book room" },
         { "name": "Invite stakeholders" }
@@ -80,17 +81,14 @@
     {
       "name": "Design Assets",
       "notes": "Hero image + variants",
-      "tags": [
-        { "name": "Design" },
-        { "name": "Urgent", "color": "red" }
-      ],
+      "tags": ["Design"],
       "custom_fields": {
-        "Urgency": "gid",
-        "Effort": "gid",
-        "Workstream": "gid",
-        "Importance": "gid"
+        "Urgency": "Medium",
+        "Effort": "8",
+        "Workstream": "Design",
+        "Importance": "Medium"
       },
-      "section_name": "gid"
+      "section_name": "In Progress"
     }
   ]
 }

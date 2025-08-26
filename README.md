@@ -12,7 +12,7 @@ Provision **Asana projects** and **tasks** from plain JSON. Keep credentials and
     - **Sections** (by GID, or best-effort by name)
     - **Subtasks** (recursive)
     - **Notes**, **due dates**, **assignees**
-    - **Followers**, **tags**, **custom fields** (define fields and reference them by name)
+    - **Followers**, **tags**, **custom fields** (define tags and fields once and reference them by name)
 - Create **tags** and attach them to tasks
 - CLI (`provision`) and Python API
 - Simple exponential backoff for Asana **rate limits**
@@ -21,7 +21,7 @@ Provision **Asana projects** and **tasks** from plain JSON. Keep credentials and
 
 ## Requirements
 
-- Python **3.9+**
+- Python **3.13+**
 - An Asana **Personal Access Token (PAT)**
 - Access to the target **workspace** and **team** (GIDs)
 
@@ -70,7 +70,7 @@ poetry run provision create-project --file examples/project_with_tasks.json
 poetry run provision add-tasks --project 120987654321 --file examples/tasks_only.json
 ```
 
-> Prefer **GIDs** for users, sections, and tags. Custom fields defined in the same JSON may be referenced by name; otherwise use GIDs.
+> Prefer **GIDs** for users and sections. Tags and custom fields defined in the same JSON may be referenced by name; otherwise use GIDs.
 
 ---
 
