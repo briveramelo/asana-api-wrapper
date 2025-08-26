@@ -37,9 +37,9 @@ def get_client() -> any:
         def __init__(self, http_client: HttpClient) -> None:
             self._http = http_client
 
-    def list(self) -> list[dict]:
-        # GET /workspaces
-        return self._http.request_paginated("GET", "/workspaces")
+        def list(self) -> list[dict]:
+            # GET /workspaces
+            return self._http.request_paginated("GET", "/workspaces")
 
     class UsersProxy:
         def __init__(self, http_client: HttpClient) -> None:
